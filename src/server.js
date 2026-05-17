@@ -6,7 +6,7 @@ const { RouterOsClient, RouterOsRequestError } = require("./routeros-client");
 dotenv.config();
 
 const app = express();
-const port = Number(process.env.PORT || 3030);
+const port = Number(process.env.HTTP_PORT || process.env.PORT || 3030);
 
 const client = new RouterOsClient({
   baseUrl: process.env.ROUTEROS_BASE_URL,

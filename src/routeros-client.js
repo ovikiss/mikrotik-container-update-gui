@@ -1,4 +1,66 @@
 const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_ROUTER_SCHEME = "http";
+
+function parseLittleEndianIpv4(hexValue) {
+  const raw = String(hexValue || "").trim();
+  if (!/^[0-9a-fA-F]{8}$/.test(raw)) {
+    return "";
+  }
+
+  const bytes = raw.match(/../g);
+  if (!bytes || bytes.length !== 4) {
+    return "";
+  }
+
+  return bytes
+    .reverse()
+    .map((part) => String(parseInt(part, 16)))
+    .join(".");
+}
+
+function detectRouterIpFromProcRoute() {
+  try {
+    const fs = require("node:fs");
+    const content = fs.readFileSync("/proc/net/route", "utf8");
+    const lines = content.split(/\r?\n/).filter(Boolean);
+
+    for (let index = 1; index < lines.length; index += 1) {
+      const columns = lines[index].trim().split(/\s+/);
+      if (columns.length < 4) continue;
+
+      const destination = columns[1];
+      const gateway = columns[2];
+      const flagsHex = columns[3];
+      const flags = parseInt(flagsHex, 16);
+
+      if (destination !== "00000000") continue;
+      if (Number.isNaN(flags) || (flags & 0x2) === 0) continue;
+
+      const gatewayIp = parseLittleEndianIpv4(gateway);
+      if (gatewayIp) {
+        return gatewayIp;
+      }
+    }
+  } catch (error) {
+    return "";
+  }
+
+  return "";
+}
+
+function resolveBaseUrl(baseUrl) {
+  const explicit = String(baseUrl || "").trim();
+  if (explicit) {
+    return explicit.replace(/\/+$/, "");
+  }
+
+  const gatewayIp = detectRouterIpFromProcRoute();
+  if (!gatewayIp) {
+    throw new Error("Missing ROUTEROS_BASE_URL and auto-detect failed");
+  }
+
+  return `${DEFAULT_ROUTER_SCHEME}://${gatewayIp}`;
+}
 
 class RouterOsRequestError extends Error {
   constructor(message, details = {}) {
@@ -90,15 +152,11 @@ function parseBearerChallenge(headerValue) {
 
 class RouterOsClient {
   constructor(config) {
-    this.baseUrl = (config.baseUrl || "").replace(/\/+$/, "");
+    this.baseUrl = resolveBaseUrl(config.baseUrl);
     this.restPrefix = normalizePathSegment(config.restPrefix || "/rest");
     this.username = config.username;
     this.password = config.password;
     this.timeoutMs = Number(config.timeoutMs || DEFAULT_TIMEOUT_MS);
-
-    if (!this.baseUrl) {
-      throw new Error("Missing ROUTEROS_BASE_URL");
-    }
 
     if (!this.username) {
       throw new Error("Missing ROUTEROS_USERNAME");

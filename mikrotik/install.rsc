@@ -16,10 +16,8 @@
 
 :local mcugLanRouterIp "192.168.88.1"
 :local mcugLanCidr "192.168.88.0/24"
-:local mcugHttpLanPort "8090"
-:local mcugHttpContainerPort "3030"
+:local mcugHttpPort "8090"
 
-:local mcugApiScheme "http"
 :local mcugApiService "www"
 :local mcugApiAllowedAddress "192.168.88.0/24,172.31.250.2/32"
 :local mcugApiUser "container-updater"
@@ -67,26 +65,10 @@
 
 # Prepare env list for the GUI container
 :foreach e in=[/container/envs/find where list="mcug"] do={ /container/envs/remove $e }
-/container/envs/add list="mcug" key="PORT" value=$mcugHttpContainerPort
-/container/envs/add list="mcug" key="ROUTEROS_BASE_URL" value=($mcugApiScheme . "://" . $mcugRouterIp)
-/container/envs/add list="mcug" key="ROUTEROS_REST_PREFIX" value="/rest"
+/container/envs/add list="mcug" key="HTTP_PORT" value=$mcugHttpPort
 /container/envs/add list="mcug" key="ROUTEROS_USERNAME" value=$mcugApiUser
 /container/envs/add list="mcug" key="ROUTEROS_PASSWORD" value=$mcugApiPassword
-/container/envs/add list="mcug" key="ROUTEROS_ALLOW_INSECURE_TLS" value="true"
-/container/envs/add list="mcug" key="ROUTEROS_TIMEOUT_MS" value="15000"
 /container/envs/add list="mcug" key="ROUTEROS_ACTION_TARGET_FIELD" value=$mcugApiTargetField
-/container/envs/add list="mcug" key="ROUTEROS_CHECK_METHOD" value="POST"
-/container/envs/add list="mcug" key="ROUTEROS_CHECK_PATH" value="/container/check-for-updates"
-/container/envs/add list="mcug" key="ROUTEROS_CHECK_SEND_TARGET" value="false"
-/container/envs/add list="mcug" key="ROUTEROS_CHECK_BODY_JSON" value="{}"
-/container/envs/add list="mcug" key="ROUTEROS_UPDATE_METHOD" value="POST"
-/container/envs/add list="mcug" key="ROUTEROS_UPDATE_PATH" value="/container/update"
-/container/envs/add list="mcug" key="ROUTEROS_UPDATE_SEND_TARGET" value="true"
-/container/envs/add list="mcug" key="ROUTEROS_UPDATE_BODY_JSON" value="{}"
-/container/envs/add list="mcug" key="ROUTEROS_ROLLBACK_METHOD" value="POST"
-/container/envs/add list="mcug" key="ROUTEROS_ROLLBACK_PATH" value="/container/rollback"
-/container/envs/add list="mcug" key="ROUTEROS_ROLLBACK_SEND_TARGET" value="true"
-/container/envs/add list="mcug" key="ROUTEROS_ROLLBACK_BODY_JSON" value="{}"
 
 # Replace existing GUI container if present
 :if ([:len [/container/find where name=$mcugContainerName]] > 0) do={
@@ -103,6 +85,10 @@
 
 # LAN port-forward to GUI (enforce a single managed rule)
 :foreach n in=[/ip/firewall/nat/find where comment="mcug-gui"] do={ /ip/firewall/nat/remove $n }
-/ip/firewall/nat/add chain=dstnat action=dst-nat protocol=tcp src-address=$mcugLanCidr dst-address=$mcugLanRouterIp dst-port=$mcugHttpLanPort to-addresses=$mcugContainerIp to-ports=$mcugHttpContainerPort comment="mcug-gui"
+/ip/firewall/nat/add chain=dstnat action=dst-nat protocol=tcp src-address=$mcugLanCidr dst-address=$mcugLanRouterIp dst-port=$mcugHttpPort to-addresses=$mcugContainerIp to-ports=$mcugHttpPort comment="mcug-gui"
 
-:put ("Container Update GUI installed. Open http://" . $mcugLanRouterIp . ":" . $mcugHttpLanPort . "/")
+# Remove legacy rules from older revisions
+:foreach n in=[/ip/firewall/nat/find where comment="mcug-egress"] do={ /ip/firewall/nat/remove $n }
+:foreach f in=[/ip/firewall/filter/find where comment="mcug-forward"] do={ /ip/firewall/filter/remove $f }
+
+:put ("Container Update GUI installed. Open http://" . $mcugLanRouterIp . ":" . $mcugHttpPort . "/")
