@@ -26,6 +26,34 @@ npm start
 Open:
 - [http://localhost:3030](http://localhost:3030)
 
+## Install on MikroTik (helper script)
+
+Like `mikrotik-traffic-monitor`, this repo includes:
+- `mikrotik/install.rsc` (RouterOS prep script)
+- `scripts/install-to-router.sh` (upload + import helper)
+
+1. Edit variables at top of `mikrotik/install.rsc`:
+- `mcugService` (default `www-ssl`)
+- `mcugAllowedAddress` (default `192.168.88.0/24`)
+- `mcugUser`
+- `mcugPassword`
+- `mcugUserGroup` (default `full`)
+
+2. Import script:
+
+```bash
+./scripts/install-to-router.sh admin@192.168.88.1
+```
+
+Manual alternative:
+
+```bash
+scp mikrotik/install.rsc admin@192.168.88.1:install-container-update-gui.rsc
+ssh admin@192.168.88.1 '/import file-name=install-container-update-gui.rsc'
+```
+
+Then configure local `.env` with that same router/user/password and run the app.
+
 ## Configuration
 
 Edit `.env`:
@@ -46,18 +74,6 @@ If your RouterOS expects different payload or path, adjust:
 - `ROUTEROS_*_SEND_TARGET`
 - `ROUTEROS_*_BODY_JSON`
 - `ROUTEROS_*_METHOD`
-
-## GitHub publish
-
-If local repo is already initialized:
-
-```bash
-git remote add origin https://github.com/ovikiss/mikrotik-container-update-gui.git
-git add .
-git commit -m "Initial MikroTik container update GUI"
-git branch -M main
-git push -u origin main
-```
 
 ## Notes
 
