@@ -59,6 +59,19 @@ function actionFromParam(value) {
   return null;
 }
 
+function isUnsupportedActionError(action, error) {
+  if (!(error instanceof RouterOsRequestError)) {
+    return false;
+  }
+
+  if (!["rollback"].includes(action)) {
+    return false;
+  }
+
+  const detail = String(error.details?.data?.detail || "").toLowerCase();
+  return detail.includes("no such command");
+}
+
 async function fetchNormalizedContainers() {
   const containers = await client.listContainers();
   return containers.map(normalizeContainer).sort((a, b) => a.name.localeCompare(b.name));
@@ -103,7 +116,41 @@ app.post("/api/containers/:id/actions/:action", async (req, res, next) => {
       return;
     }
 
-    const result = await client.runContainerAction(action, container);
+    if (action === "check") {
+      const checkResult = await client.checkContainerImage(container);
+      res.json({
+        ok: true,
+        action,
+        container: {
+          id: container.id,
+          name: container.name
+        },
+        result: checkResult
+      });
+      return;
+    }
+
+    let result;
+    try {
+      result = await client.runContainerAction(action, container);
+    } catch (error) {
+      if (isUnsupportedActionError(action, error)) {
+        res.json({
+          ok: true,
+          action,
+          unsupported: true,
+          message: `Action '${action}' is not supported by this RouterOS REST build`,
+          container: {
+            id: container.id,
+            name: container.name
+          },
+          details: error.details || null
+        });
+        return;
+      }
+      throw error;
+    }
+
     res.json({
       ok: true,
       action,
@@ -138,6 +185,16 @@ app.post("/api/containers/actions/:action", async (req, res, next) => {
     const results = [];
     for (const container of targetContainers) {
       try {
+        if (action === "check") {
+          const checkResult = await client.checkContainerImage(container);
+          results.push({
+            ok: true,
+            container: { id: container.id, name: container.name },
+            result: checkResult
+          });
+          continue;
+        }
+
         const result = await client.runContainerAction(action, container);
         results.push({
           ok: true,
@@ -145,6 +202,17 @@ app.post("/api/containers/actions/:action", async (req, res, next) => {
           result
         });
       } catch (error) {
+        if (isUnsupportedActionError(action, error)) {
+          results.push({
+            ok: true,
+            unsupported: true,
+            container: { id: container.id, name: container.name },
+            message: `Action '${action}' is not supported by this RouterOS REST build`,
+            details: error.details || null
+          });
+          continue;
+        }
+
         results.push({
           ok: false,
           container: { id: container.id, name: container.name },

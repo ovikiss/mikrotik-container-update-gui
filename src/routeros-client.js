@@ -27,6 +27,67 @@ function boolFromEnv(value, fallbackValue) {
   return !(value === "false" || value === "0" || value === "no");
 }
 
+function normalizeDigest(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+  return raw.startsWith("sha256:") ? raw.slice(7) : raw;
+}
+
+function parseImageReference(imageRef) {
+  const input = String(imageRef || "").trim();
+  if (!input) {
+    throw new Error("Missing container remote-image");
+  }
+
+  const withoutDigest = input.split("@")[0];
+  const slashIndex = withoutDigest.lastIndexOf("/");
+  const colonIndex = withoutDigest.lastIndexOf(":");
+
+  let reference = "latest";
+  let repoPart = withoutDigest;
+  if (colonIndex > slashIndex) {
+    reference = withoutDigest.slice(colonIndex + 1);
+    repoPart = withoutDigest.slice(0, colonIndex);
+  }
+
+  const firstPart = repoPart.split("/")[0];
+  const hasRegistryPrefix =
+    firstPart.includes(".") || firstPart.includes(":") || firstPart === "localhost";
+
+  let registry;
+  let repository;
+
+  if (hasRegistryPrefix) {
+    registry = firstPart;
+    repository = repoPart.slice(firstPart.length + 1);
+  } else {
+    registry = "registry-1.docker.io";
+    repository = repoPart.includes("/") ? repoPart : `library/${repoPart}`;
+  }
+
+  return { registry, repository, reference, original: input };
+}
+
+function parseBearerChallenge(headerValue) {
+  const header = String(headerValue || "");
+  if (!header.toLowerCase().startsWith("bearer ")) {
+    return null;
+  }
+
+  const params = {};
+  const regex = /([a-zA-Z]+)="([^"]*)"/g;
+  let match;
+  while ((match = regex.exec(header))) {
+    params[match[1].toLowerCase()] = match[2];
+  }
+
+  if (!params.realm) {
+    return null;
+  }
+
+  return params;
+}
+
 class RouterOsClient {
   constructor(config) {
     this.baseUrl = (config.baseUrl || "").replace(/\/+$/, "");
@@ -181,10 +242,6 @@ class RouterOsClient {
       payload[this.targetField] = container.id;
     }
 
-    if (def.sendTarget && !templateContainsName && !payload.name && container.name) {
-      payload.name = container.name;
-    }
-
     return payload;
   }
 
@@ -201,6 +258,153 @@ class RouterOsClient {
       method: def.method,
       body
     });
+  }
+
+  async registryFetchJson(url, options = {}) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    let response;
+    try {
+      response = await fetch(url, {
+        method: options.method || "GET",
+        headers: options.headers || {},
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    const rawText = await response.text();
+    let data = null;
+
+    if (rawText) {
+      try {
+        data = JSON.parse(rawText);
+      } catch (error) {
+        data = rawText;
+      }
+    }
+
+    return { response, data };
+  }
+
+  async fetchRegistryManifestWithAuth(registryUrl) {
+    const acceptHeader = [
+      "application/vnd.oci.image.manifest.v1+json",
+      "application/vnd.docker.distribution.manifest.v2+json",
+      "application/vnd.oci.image.index.v1+json",
+      "application/vnd.docker.distribution.manifest.list.v2+json"
+    ].join(", ");
+
+    const firstTry = await this.registryFetchJson(registryUrl, {
+      headers: { Accept: acceptHeader }
+    });
+
+    if (firstTry.response.ok) {
+      return firstTry;
+    }
+
+    if (firstTry.response.status !== 401) {
+      throw new Error(`Registry request failed with HTTP ${firstTry.response.status}`);
+    }
+
+    const challenge = parseBearerChallenge(firstTry.response.headers.get("www-authenticate"));
+    if (!challenge) {
+      throw new Error("Registry authentication challenge is not supported");
+    }
+
+    const tokenUrl = new URL(challenge.realm);
+    if (challenge.service) tokenUrl.searchParams.set("service", challenge.service);
+    if (challenge.scope) tokenUrl.searchParams.set("scope", challenge.scope);
+
+    const tokenTry = await this.registryFetchJson(tokenUrl.toString());
+    if (!tokenTry.response.ok) {
+      throw new Error(`Registry token request failed with HTTP ${tokenTry.response.status}`);
+    }
+
+    const bearerToken = tokenTry.data?.token || tokenTry.data?.access_token;
+    if (!bearerToken) {
+      throw new Error("Registry token response did not include a bearer token");
+    }
+
+    const secondTry = await this.registryFetchJson(registryUrl, {
+      headers: {
+        Accept: acceptHeader,
+        Authorization: `Bearer ${bearerToken}`
+      }
+    });
+
+    if (!secondTry.response.ok) {
+      throw new Error(`Registry request failed with HTTP ${secondTry.response.status}`);
+    }
+
+    return secondTry;
+  }
+
+  async resolveRemoteConfigDigest(imageRef) {
+    const parsed = parseImageReference(imageRef);
+    const baseUrl = `https://${parsed.registry}/v2/${parsed.repository}/manifests/${parsed.reference}`;
+
+    const manifestResult = await this.fetchRegistryManifestWithAuth(baseUrl);
+    let manifest = manifestResult.data;
+
+    if (manifest && Array.isArray(manifest.manifests) && !manifest.config) {
+      const preferredManifest =
+        manifest.manifests.find((item) => item.platform?.architecture === "arm" && item.platform?.variant === "v7") ||
+        manifest.manifests.find((item) => item.platform?.architecture === "arm64") ||
+        manifest.manifests.find((item) => item.platform?.architecture === "arm") ||
+        manifest.manifests[0];
+
+      if (!preferredManifest?.digest) {
+        throw new Error("Could not resolve a child manifest digest");
+      }
+
+      const nestedUrl = `https://${parsed.registry}/v2/${parsed.repository}/manifests/${preferredManifest.digest}`;
+      const nestedResult = await this.fetchRegistryManifestWithAuth(nestedUrl);
+      manifest = nestedResult.data;
+    }
+
+    const remoteConfigDigest = String(manifest?.config?.digest || "");
+    if (!remoteConfigDigest) {
+      throw new Error("Registry manifest did not include config digest");
+    }
+
+    return {
+      imageRef: parsed.original,
+      remoteConfigDigest,
+      normalizedRemoteConfigDigest: normalizeDigest(remoteConfigDigest)
+    };
+  }
+
+  async checkContainerImage(container) {
+    const localImageId = String(container.raw?.["image-id"] || "");
+    const normalizedLocalImageId = normalizeDigest(localImageId);
+    const remoteImageRef = container.raw?.["remote-image"] || container.image;
+
+    try {
+      const remote = await this.resolveRemoteConfigDigest(remoteImageRef);
+      const upToDate =
+        normalizedLocalImageId &&
+        remote.normalizedRemoteConfigDigest &&
+        normalizedLocalImageId === remote.normalizedRemoteConfigDigest;
+
+      return {
+        mode: "digest-compare",
+        upToDate: Boolean(upToDate),
+        localImageId,
+        remoteConfigDigest: remote.remoteConfigDigest,
+        imageRef: remote.imageRef
+      };
+    } catch (error) {
+      return {
+        mode: "digest-compare",
+        upToDate: null,
+        localImageId,
+        imageRef: String(remoteImageRef || ""),
+        warning: `Digest check unavailable: ${error.message}`
+      };
+    }
   }
 }
 

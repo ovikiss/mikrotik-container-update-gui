@@ -1,0 +1,123 @@
+name: docker-publish
+
+on:
+  push:
+    tags: [ "v*" ]
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+            type=ref,event=tag
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/arm/v7,linux/arm64
+          provenance: false
+          sbom: false
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Cleanup old GHCR versions (keep latest + semver tags)
+        if: always() && github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GHCR_DELETE_TOKEN || secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          PACKAGE: ${{ github.event.repository.name }}
+        run: |
+          set -euo pipefail
+
+          API="https://api.github.com/users/${OWNER}/packages/container/${PACKAGE}/versions?per_page=100"
+          ALL="$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "$API")"
+
+          KEEP_ID="$(printf '%s' "$ALL" | jq -r '
+            [ .[] | select((.metadata.container.tags // []) | index("latest")) ]
+            | sort_by(.created_at) | reverse | .[0].id // empty
+          ')"
+
+          if [ -z "${KEEP_ID}" ]; then
+            echo "No latest-tagged package version found; skipping cleanup."
+            exit 0
+          fi
+
+          KEEP_TAGS="$(printf '%s' "$ALL" | jq -r '
+            [
+              .[] | ((.metadata.container.tags // [] )[]?)
+              | select(. == "latest" or test("^v[0-9]+\\.[0-9]+(\\.[0-9]+)?$"))
+            ] | unique | .[]
+          ')"
+
+          KEEP_IDS="$(printf '%s' "$ALL" | jq -r --argjson keep "$KEEP_ID" '
+            (
+              [ .[] | select(.id == $keep) | .id ]
+              +
+              [ .[] | select((.metadata.container.tags // []) | any(test("^v[0-9]+\\.[0-9]+(\\.[0-9]+)?$"))) | .id ]
+            ) | .[]
+          ')"
+
+          KEEP_DIGESTS=""
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            RAW="$(docker buildx imagetools inspect --raw "ghcr.io/${OWNER}/${PACKAGE}:${tag}" 2>/dev/null || true)"
+            [ -n "$RAW" ] || continue
+            TAG_DIGESTS="$(printf '%s' "$RAW" | jq -r '.manifests[]?.digest // empty')"
+            KEEP_DIGESTS="$(printf '%s\n%s\n' "$KEEP_DIGESTS" "$TAG_DIGESTS" | awk 'NF' | sort -u)"
+          done <<< "$KEEP_TAGS"
+
+          if [ -n "${KEEP_DIGESTS}" ]; then
+            EXTRA_KEEP_IDS="$(printf '%s' "$ALL" | jq -r --arg digests "$KEEP_DIGESTS" '
+              ($digests | split("\n") | map(select(length > 0))) as $want
+              | .[] | select(.name as $n | ($want | index($n))) | .id
+            ')"
+            KEEP_IDS="$(printf '%s\n%s\n' "$KEEP_IDS" "$EXTRA_KEEP_IDS" | awk 'NF' | sort -u)"
+          fi
+
+          DELETE_IDS="$(printf '%s' "$ALL" | jq -r '.[] | .id' | grep -vxF -f <(printf '%s\n' "$KEEP_IDS") || true)"
+
+          printf '%s\n' "$DELETE_IDS" | while read -r id; do
+            [ -n "$id" ] || continue
+            curl -fsSL -X DELETE \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/users/${OWNER}/packages/container/${PACKAGE}/versions/${id}" >/dev/null
+            echo "Deleted package version: ${id}"
+          done

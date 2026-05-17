@@ -8,14 +8,48 @@ What it does:
 - Per-container actions: `check`, `update`, `rollback`.
 - Bulk actions for all or selected containers.
 - Activity log in UI.
+- `check` uses digest/hash compare (`image-id` local vs registry digest), and never crashes UI if registry lookup is unavailable.
+
+## Run mode
+
+This project is now designed to run as a **container on RouterOS**.
+All RouterOS API config is injected via `/container envs` in `mikrotik/install.rsc`.
 
 ## Requirements
 
-- Node.js 18+
-- RouterOS v7 with REST API enabled (`www` or `www-ssl` service)
-- User account with enough rights to read `/container` and execute container actions
+- RouterOS v7 with `container` package enabled
+- External storage (recommended `usb1`) for image/root-dir/tmpdir
+- SSH/SCP access to router (`admin@192.168.88.1` by default)
+- Docker with buildx on your local machine
 
-## Quick start
+## Install on MikroTik
+
+One command (build image, push to GHCR, import install script):
+
+```bash
+./scripts/install-to-router.sh admin@192.168.88.1
+```
+
+This script will:
+1. Build `linux/arm/v7` image locally.
+2. Push image to `ghcr.io/ovikiss/mikrotik-container-update-gui:latest`.
+3. Upload/import `mikrotik/install.rsc`.
+4. Create/update RouterOS container + env list + one firewall rule for LAN access (`mcug-gui`).
+
+After install, open:
+- `http://192.168.88.1:8090/`
+
+## Configure before install
+
+Edit variables at top of `mikrotik/install.rsc` if needed:
+- network/veth/bridge values (`mcugVeth`, `mcugBridge`, `mcugSubnet`)
+- storage paths (`mcugRootDir`, `mcugPullDir`)
+- UI port/NAT (`mcugHttpLanPort`, `mcugLanCidr`)
+- RouterOS API user/password (`mcugApiUser`, `mcugApiPassword`)
+
+## Local dev mode (optional)
+
+You can still run locally with `.env`:
 
 ```bash
 npm install
@@ -26,56 +60,8 @@ npm start
 Open:
 - [http://localhost:3030](http://localhost:3030)
 
-## Install on MikroTik (helper script)
-
-Like `mikrotik-traffic-monitor`, this repo includes:
-- `mikrotik/install.rsc` (RouterOS prep script)
-- `scripts/install-to-router.sh` (upload + import helper)
-
-1. Edit variables at top of `mikrotik/install.rsc`:
-- `mcugService` (default `www-ssl`)
-- `mcugAllowedAddress` (default `192.168.88.0/24`)
-- `mcugUser`
-- `mcugPassword`
-- `mcugUserGroup` (default `full`)
-
-2. Import script:
-
-```bash
-./scripts/install-to-router.sh admin@192.168.88.1
-```
-
-Manual alternative:
-
-```bash
-scp mikrotik/install.rsc admin@192.168.88.1:install-container-update-gui.rsc
-ssh admin@192.168.88.1 '/import file-name=install-container-update-gui.rsc'
-```
-
-Then configure local `.env` with that same router/user/password and run the app.
-
-## Configuration
-
-Edit `.env`:
-
-- `ROUTEROS_BASE_URL`: Router address, ex `https://192.168.88.1`
-- `ROUTEROS_USERNAME` / `ROUTEROS_PASSWORD`
-- `ROUTEROS_ALLOW_INSECURE_TLS=true` if router uses self-signed cert
-
-Action endpoints are configurable because RouterOS versions can differ:
-- `ROUTEROS_CHECK_PATH`
-- `ROUTEROS_UPDATE_PATH`
-- `ROUTEROS_ROLLBACK_PATH`
-
-By default, app sends the container ID in POST body using:
-- `ROUTEROS_ACTION_TARGET_FIELD=number`
-
-If your RouterOS expects different payload or path, adjust:
-- `ROUTEROS_*_SEND_TARGET`
-- `ROUTEROS_*_BODY_JSON`
-- `ROUTEROS_*_METHOD`
-
 ## Notes
 
-- UI discovers all containers every refresh, so future containers are included automatically.
-- Some RouterOS builds expose container commands differently in REST. If an action fails, check RouterOS logs/API path and update the corresponding env variable.
+- RouterOS service `www` is used by default for internal REST calls from container (`http://<router-bridge-ip>/rest`).
+- If you want HTTPS REST, configure certificate for `www-ssl` and adjust `mcugApiScheme` + `mcugApiService`.
+- On RouterOS v7.22, REST update works with container `".id"` payload; `check-for-updates` is not exposed, so digest compare is used instead.

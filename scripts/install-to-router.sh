@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROUTER="${1:-admin@192.168.88.1}"
+PLATFORM="${2:-linux/arm/v7}"
+IMAGE="ghcr.io/ovikiss/mikrotik-container-update-gui:latest"
 RSC_LOCAL="mikrotik/install.rsc"
 RSC_REMOTE="install-container-update-gui.rsc"
 
@@ -10,10 +12,20 @@ if [[ ! -f "$RSC_LOCAL" ]]; then
   exit 1
 fi
 
-echo "Uploading $RSC_LOCAL to $ROUTER:$RSC_REMOTE"
+echo "Logging in to GHCR using gh token"
+gh auth token | docker login ghcr.io -u ovikiss --password-stdin >/dev/null
+
+echo "Building and pushing $IMAGE for $PLATFORM"
+docker buildx build \
+  --platform "$PLATFORM" \
+  -t "$IMAGE" \
+  --push \
+  .
+
+echo "Uploading install script to $ROUTER:$RSC_REMOTE"
 scp "$RSC_LOCAL" "$ROUTER:$RSC_REMOTE"
 
 echo "Importing script on router"
 ssh "$ROUTER" "/import file-name=$RSC_REMOTE"
 
-echo "Done. Next: configure .env and run npm start"
+echo "Done. Open: http://192.168.88.1:8090/"

@@ -161,6 +161,34 @@ th {
   text-transform: lowercase;
 }
 
+.update-pill {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  background: #ebf0f5;
+  color: #33455d;
+}
+
+.update-pill.available {
+  background: #ffe8df;
+  color: #8a2f17;
+}
+
+.update-pill.current {
+  background: #e6f9f0;
+  color: #0f5f3f;
+}
+
+.update-pill.unknown {
+  background: #edf2f8;
+  color: #4a5b73;
+}
+
+.btn.hidden {
+  display: none;
+}
+
 .mono {
   font-family: "JetBrains Mono", "Menlo", monospace;
   font-size: 0.82rem;
@@ -186,8 +214,8 @@ th {
 
   th:nth-child(3),
   td:nth-child(3),
-  th:nth-child(5),
-  td:nth-child(5) {
+  th:nth-child(6),
+  td:nth-child(6) {
     display: none;
   }
 }

@@ -1,6 +1,7 @@
 const state = {
   containers: [],
-  busy: false
+  busy: false,
+  checkById: {}
 };
 
 const els = {
@@ -92,7 +93,21 @@ function renderRows() {
     fragment.querySelector('[data-col="status"]').textContent = container.status;
     fragment.querySelector('[data-col="image"]').textContent = container.image || "-";
 
+    const checkState = state.checkById[container.id] || { state: "unchecked", text: "unchecked" };
+    const updatePill = fragment.querySelector('[data-col="updateState"]');
+    updatePill.textContent = checkState.text;
+    updatePill.classList.remove("available", "current", "unknown");
+    if (checkState.state === "available") updatePill.classList.add("available");
+    if (checkState.state === "current") updatePill.classList.add("current");
+    if (checkState.state === "unknown" || checkState.state === "unchecked") {
+      updatePill.classList.add("unknown");
+    }
+
     fragment.querySelectorAll("[data-action]").forEach((btn) => {
+      if (btn.dataset.action === "update") {
+        const allowUpdate = checkState.state === "available";
+        btn.classList.toggle("hidden", !allowUpdate);
+      }
       btn.addEventListener("click", () => runSingleAction(container.id, btn.dataset.action));
     });
 
@@ -101,6 +116,26 @@ function renderRows() {
   });
 
   updateSelectAllState();
+}
+
+function digestCheckToUiState(result) {
+  if (!result || result.mode !== "digest-compare") {
+    return { state: "unknown", text: "unknown" };
+  }
+
+  if (result.upToDate === false) {
+    return { state: "available", text: "update available" };
+  }
+
+  if (result.upToDate === true) {
+    return { state: "current", text: "up to date" };
+  }
+
+  return { state: "unknown", text: "unknown" };
+}
+
+function applyCheckResult(containerId, result) {
+  state.checkById[containerId] = digestCheckToUiState(result);
 }
 
 function setConnection(ok, text) {
@@ -142,7 +177,14 @@ async function runSingleAction(id, action) {
       method: "POST"
     });
     appendLog(`Action '${action}' completed for ${result.container.name}`, result.result);
-    await loadContainers();
+
+    if (action === "check") {
+      applyCheckResult(id, result.result);
+      renderRows();
+    } else {
+      state.checkById = {};
+      await loadContainers();
+    }
   } catch (error) {
     appendLog(`Action '${action}' failed on ${id}: ${error.message}`, error.details || {});
   } finally {
@@ -151,7 +193,20 @@ async function runSingleAction(id, action) {
 }
 
 async function runBulkAction(action) {
-  const ids = selectedContainerIds();
+  const selectedIds = selectedContainerIds();
+  let ids = selectedIds;
+
+  if (action === "update" && selectedIds.length === 0) {
+    ids = state.containers
+      .filter((container) => state.checkById[container.id]?.state === "available")
+      .map((container) => container.id);
+  }
+
+  if (action === "update" && ids.length === 0) {
+    appendLog("No containers marked with updates. Run check first or select specific containers.");
+    return;
+  }
+
   const scopeLabel = ids.length ? `${ids.length} selected containers` : "all containers";
 
   setBusy(true);
@@ -167,7 +222,17 @@ async function runBulkAction(action) {
       result.results
     );
 
-    await loadContainers();
+    if (action === "check") {
+      result.results.forEach((entry) => {
+        if (entry?.container?.id) {
+          applyCheckResult(entry.container.id, entry.result);
+        }
+      });
+      renderRows();
+    } else {
+      state.checkById = {};
+      await loadContainers();
+    }
   } catch (error) {
     appendLog(`Bulk '${action}' failed: ${error.message}`, error.details || {});
   } finally {
