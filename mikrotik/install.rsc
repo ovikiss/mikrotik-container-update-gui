@@ -22,7 +22,6 @@
 :local mcugApiAllowedAddress "192.168.88.0/24,172.31.250.2/32"
 :local mcugApiUser "container-updater"
 :local mcugApiPassword "ChangeMe-Now-Strong-Password"
-:local mcugApiTargetField ".id"
 
 # Ensure directories on disk
 :if ([:len [/file find where name="usb1/containers"]] = 0) do={ /file add name="usb1/containers" type=directory }
@@ -68,13 +67,20 @@
 /container/envs/add list="mcug" key="HTTP_PORT" value=$mcugHttpPort
 /container/envs/add list="mcug" key="ROUTEROS_USERNAME" value=$mcugApiUser
 /container/envs/add list="mcug" key="ROUTEROS_PASSWORD" value=$mcugApiPassword
-/container/envs/add list="mcug" key="ROUTEROS_ACTION_TARGET_FIELD" value=$mcugApiTargetField
 
 # Replace existing GUI container if present
 :if ([:len [/container/find where name=$mcugContainerName]] > 0) do={
-  /container/stop [find where name=$mcugContainerName]
-  /delay 2
-  /container/remove [find where name=$mcugContainerName]
+  :local mcugOldId [/container/find where name=$mcugContainerName]
+  :do { /container/stop $mcugOldId } on-error={ :put "Container stop skipped (already stopped)." }
+  :local mcugWait 0
+  :while ([:len [/container/find where .id=$mcugOldId and status="running"]] > 0 && $mcugWait < 10) do={
+    /delay 1
+    :set mcugWait ($mcugWait + 1)
+  }
+  :do { /container/remove $mcugOldId } on-error={
+    /delay 2
+    /container/remove $mcugOldId
+  }
 }
 
 # Deploy GUI container from remote image

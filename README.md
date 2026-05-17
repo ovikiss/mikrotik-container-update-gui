@@ -64,4 +64,4 @@ Open:
 
 - RouterOS service `www` is enabled for internal REST calls from the container network.
 - `ROUTEROS_BASE_URL` is optional; when missing, app auto-detects router gateway from `/proc/net/route` (defaulting to `http://<gateway>`).
-- On RouterOS v7.22, REST update works with container `".id"` payload; `check-for-updates` is not exposed, so digest compare is used instead.
+- On RouterOS v7.22, REST update works with container `".id"` payload (selected automatically); `check-for-updates` is not exposed, so digest compare is used instead.

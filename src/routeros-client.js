@@ -171,7 +171,8 @@ class RouterOsClient {
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
     }
 
-    this.targetField = config.actionTargetField || "number";
+    const explicitTargetField = String(config.actionTargetField || "").trim();
+    this.targetField = explicitTargetField || ".id";
 
     this.actionDefs = {
       check: {

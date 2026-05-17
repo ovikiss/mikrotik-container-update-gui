@@ -15,7 +15,6 @@ const client = new RouterOsClient({
   password: process.env.ROUTEROS_PASSWORD,
   timeoutMs: process.env.ROUTEROS_TIMEOUT_MS,
   allowInsecureTls: process.env.ROUTEROS_ALLOW_INSECURE_TLS,
-  actionTargetField: process.env.ROUTEROS_ACTION_TARGET_FIELD,
 
   checkPath: process.env.ROUTEROS_CHECK_PATH,
   checkMethod: process.env.ROUTEROS_CHECK_METHOD,
