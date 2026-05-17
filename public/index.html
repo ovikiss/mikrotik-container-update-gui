@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MikroTik Container Update GUI</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <h1>MikroTik Container Update GUI</h1>
+          <p class="subtitle">Auto-discovers all containers from RouterOS REST API</p>
+        </div>
+        <button id="refreshBtn" class="btn">Refresh</button>
+      </header>
+
+      <section class="panel">
+        <div class="status-row">
+          <span id="connectionBadge" class="badge">Checking connection...</span>
+          <span id="countLabel"></span>
+        </div>
+
+        <div class="toolbar">
+          <button class="btn ghost" data-bulk-action="check">Check selected/all</button>
+          <button class="btn" data-bulk-action="update">Update selected/all</button>
+          <button class="btn danger" data-bulk-action="rollback">Rollback selected/all</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th><input id="selectAll" type="checkbox" /></th>
+                <th>Name</th>
+                <th>ID</th>
+                <th>Status</th>
+                <th>Image</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="containersBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Activity</h2>
+        <pre id="logBox" class="log-box"></pre>
+      </section>
+    </main>
+
+    <template id="rowTemplate">
+      <tr>
+        <td><input class="row-select" type="checkbox" /></td>
+        <td data-col="name"></td>
+        <td data-col="id"></td>
+        <td><span data-col="status" class="status-pill"></span></td>
+        <td data-col="image" class="mono"></td>
+        <td>
+          <div class="row-actions">
+            <button class="btn tiny ghost" data-action="check">Check</button>
+            <button class="btn tiny" data-action="update">Update</button>
+            <button class="btn tiny danger" data-action="rollback">Rollback</button>
+          </div>
+        </td>
+      </tr>
+    </template>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

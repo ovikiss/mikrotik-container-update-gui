@@ -1,0 +1,190 @@
+const state = {
+  containers: [],
+  busy: false
+};
+
+const els = {
+  refreshBtn: document.getElementById("refreshBtn"),
+  selectAll: document.getElementById("selectAll"),
+  containersBody: document.getElementById("containersBody"),
+  rowTemplate: document.getElementById("rowTemplate"),
+  logBox: document.getElementById("logBox"),
+  connectionBadge: document.getElementById("connectionBadge"),
+  countLabel: document.getElementById("countLabel"),
+  bulkButtons: Array.from(document.querySelectorAll("[data-bulk-action]"))
+};
+
+function nowLabel() {
+  return new Date().toLocaleTimeString();
+}
+
+function appendLog(message, obj) {
+  const line = `[${nowLabel()}] ${message}`;
+  if (obj === undefined) {
+    els.logBox.textContent = `${line}\n${els.logBox.textContent}`;
+  } else {
+    els.logBox.textContent = `${line}\n${JSON.stringify(obj, null, 2)}\n\n${els.logBox.textContent}`;
+  }
+}
+
+function setBusy(value) {
+  state.busy = value;
+  const disabled = Boolean(value);
+  els.refreshBtn.disabled = disabled;
+  els.bulkButtons.forEach((btn) => {
+    btn.disabled = disabled;
+  });
+
+  els.containersBody.querySelectorAll("button").forEach((btn) => {
+    btn.disabled = disabled;
+  });
+}
+
+async function apiRequest(url, options = {}) {
+  const response = await fetch(url, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    },
+    ...options
+  });
+
+  const data = await response.json();
+  if (!response.ok || data.ok === false) {
+    const err = new Error(data.error || `HTTP ${response.status}`);
+    err.details = data.details || null;
+    throw err;
+  }
+
+  return data;
+}
+
+function selectedContainerIds() {
+  return Array.from(els.containersBody.querySelectorAll(".row-select:checked"))
+    .map((input) => input.dataset.id)
+    .filter(Boolean);
+}
+
+function updateSelectAllState() {
+  const checks = Array.from(els.containersBody.querySelectorAll(".row-select"));
+  if (checks.length === 0) {
+    els.selectAll.checked = false;
+    return;
+  }
+
+  const checkedCount = checks.filter((input) => input.checked).length;
+  els.selectAll.checked = checkedCount === checks.length;
+}
+
+function renderRows() {
+  els.containersBody.innerHTML = "";
+
+  state.containers.forEach((container) => {
+    const fragment = els.rowTemplate.content.cloneNode(true);
+    const tr = fragment.querySelector("tr");
+
+    const rowSelect = fragment.querySelector(".row-select");
+    rowSelect.dataset.id = container.id;
+    rowSelect.addEventListener("change", updateSelectAllState);
+
+    fragment.querySelector('[data-col="name"]').textContent = container.name;
+    fragment.querySelector('[data-col="id"]').textContent = container.id;
+    fragment.querySelector('[data-col="status"]').textContent = container.status;
+    fragment.querySelector('[data-col="image"]').textContent = container.image || "-";
+
+    fragment.querySelectorAll("[data-action]").forEach((btn) => {
+      btn.addEventListener("click", () => runSingleAction(container.id, btn.dataset.action));
+    });
+
+    tr.dataset.id = container.id;
+    els.containersBody.appendChild(fragment);
+  });
+
+  updateSelectAllState();
+}
+
+function setConnection(ok, text) {
+  els.connectionBadge.classList.remove("ok", "error");
+  if (ok) {
+    els.connectionBadge.classList.add("ok");
+  } else {
+    els.connectionBadge.classList.add("error");
+  }
+  els.connectionBadge.textContent = text;
+}
+
+async function loadContainers() {
+  setBusy(true);
+  try {
+    const [health, data] = await Promise.all([
+      apiRequest("/api/health"),
+      apiRequest("/api/containers")
+    ]);
+
+    setConnection(true, "Connected to RouterOS");
+    state.containers = data.containers || [];
+    renderRows();
+    els.countLabel.textContent = `Containers: ${health.containerCount}`;
+    appendLog(`Loaded ${health.containerCount} containers`);
+  } catch (error) {
+    setConnection(false, "Connection failed");
+    appendLog(`Load failed: ${error.message}`, error.details || {});
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function runSingleAction(id, action) {
+  setBusy(true);
+  try {
+    appendLog(`Running '${action}' on container ${id}`);
+    const result = await apiRequest(`/api/containers/${encodeURIComponent(id)}/actions/${action}`, {
+      method: "POST"
+    });
+    appendLog(`Action '${action}' completed for ${result.container.name}`, result.result);
+    await loadContainers();
+  } catch (error) {
+    appendLog(`Action '${action}' failed on ${id}: ${error.message}`, error.details || {});
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function runBulkAction(action) {
+  const ids = selectedContainerIds();
+  const scopeLabel = ids.length ? `${ids.length} selected containers` : "all containers";
+
+  setBusy(true);
+  try {
+    appendLog(`Running bulk '${action}' on ${scopeLabel}`);
+    const result = await apiRequest(`/api/containers/actions/${action}`, {
+      method: "POST",
+      body: JSON.stringify({ containerIds: ids })
+    });
+
+    appendLog(
+      `Bulk '${action}' finished: ${result.successCount} ok, ${result.failedCount} failed`,
+      result.results
+    );
+
+    await loadContainers();
+  } catch (error) {
+    appendLog(`Bulk '${action}' failed: ${error.message}`, error.details || {});
+  } finally {
+    setBusy(false);
+  }
+}
+
+els.refreshBtn.addEventListener("click", loadContainers);
+els.selectAll.addEventListener("change", (event) => {
+  const checked = event.target.checked;
+  els.containersBody.querySelectorAll(".row-select").forEach((input) => {
+    input.checked = checked;
+  });
+});
+
+els.bulkButtons.forEach((btn) => {
+  btn.addEventListener("click", () => runBulkAction(btn.dataset.bulkAction));
+});
+
+loadContainers();
