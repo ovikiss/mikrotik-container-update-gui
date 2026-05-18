@@ -289,6 +289,15 @@ class RouterOsClient:
             raw_bytes = http_error.read() or b""
         except urllib_error.URLError as net_error:
             reason = net_error.reason
+            reason_text = str(reason)
+            if verify_tls and "CERTIFICATE_VERIFY_FAILED" in reason_text:
+                return self._http_request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    payload=payload,
+                    verify_tls=False,
+                )
             if isinstance(reason, socket.timeout):
                 raise RouterOsRequestError(
                     "RouterOS request timed out",
@@ -505,6 +514,39 @@ class RouterOsClient:
         except Exception:
             tags = []
 
+        # Docker Hub fallback:
+        # - use Hub tags API when registry endpoint returns nothing
+        # - or when registry endpoint returns only non-semver tags (common on high-tag repos)
+        if parsed.get("registry") == "registry-1.docker.io":
+            repository = str(parsed.get("repository") or "")
+            needs_hub_fallback = (not tags) or not any(parse_semver_tag(tag) is not None for tag in tags)
+            if repository and needs_hub_fallback:
+                seen_tag_names = set(tags)
+                for page in range(1, 6):
+                    try:
+                        hub_url = (
+                            "https://hub.docker.com/v2/repositories/"
+                            f"{repository}/tags?page_size=100&page={page}"
+                        )
+                        hub_result = self.registry_fetch_json(hub_url, headers={"Accept": "application/json"})
+                        if not hub_result.get("ok"):
+                            break
+                        hub_data = hub_result.get("data") if isinstance(hub_result.get("data"), dict) else {}
+                        results = hub_data.get("results")
+                        if not isinstance(results, list) or not results:
+                            break
+                        for item in results:
+                            if isinstance(item, dict) and item.get("name"):
+                                tag_name = str(item.get("name"))
+                                if tag_name not in seen_tag_names:
+                                    tags.append(tag_name)
+                                    seen_tag_names.add(tag_name)
+                        next_url = hub_data.get("next")
+                        if not next_url:
+                            break
+                    except Exception:
+                        break
+
         semver_tags = []
         for tag in tags:
             parsed_semver = parse_semver_tag(tag)
@@ -513,33 +555,22 @@ class RouterOsClient:
             semver_tags.append((parsed_semver, tag))
         semver_tags.sort(key=lambda item: item[0], reverse=True)
 
-        if anchor_tag in ("stable", "latest"):
-            add_candidate(anchor_tag)
-        elif anchor_tag:
-            # For non-standard anchors (e.g. beta), keep current tag first.
+        if anchor_tag:
+            # Universal policy: always keep currently configured tag as anchor.
             add_candidate(anchor_tag)
 
         for _, tag in semver_tags[: max(0, int(max_semver))]:
             add_candidate(tag)
 
-        verified: List[Dict[str, str]] = []
-        for tag in candidate_tags:
-            image_candidate = f"{base_image}:{tag}"
-            try:
-                # Ensure the tag resolves to a manifest pullable for current container architecture.
-                self.resolve_rollback_image_reference(image_candidate, preferred_architecture)
-            except Exception:
-                continue
-            verified.append(
+        if candidate_tags:
+            return [
                 {
                     "tag": tag,
                     "label": tag,
-                    "imageRef": image_candidate,
+                    "imageRef": f"{base_image}:{tag}",
                 }
-            )
-
-        if verified:
-            return verified
+                for tag in candidate_tags
+            ]
 
         # Final fallback: show current tag even when verification fails due transient networking.
         if current_ref and not current_ref.startswith("sha256:"):
