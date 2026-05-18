@@ -223,6 +223,41 @@ h1 {
   font-size: 1.6rem;
 }
 
+.brand-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.52em;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.brand-title span {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.brand-text {
+  display: inline-block;
+  line-height: 1;
+  font-family: "Helvetica Neue", "Avenir Next", "Segoe UI", Arial, sans-serif;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 0.83em;
+  transform: translateY(0);
+}
+
+.brand-mikrotik-mark {
+  display: block;
+  flex: 0 0 auto;
+  width: 7.88em;
+  height: 1.38em;
+  color: var(--ink);
+  overflow: visible;
+  transform: translateY(0);
+}
+
 h2 {
   margin: 0 0 8px;
   font-size: 1rem;
