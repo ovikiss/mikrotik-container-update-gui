@@ -5,9 +5,16 @@
 - Runtime migrated from Node.js to Python for lower container footprint.
 - Runtime packaged traffic-monitor style in a single `/app/mcug.sh` script (Python embedded, no `.py` files in repo).
 - Added compatibility shim for existing RouterOS configs that still start with `node src/server.js`.
-- Cleaned up README structure and deployment notes.
+- Cleaned up repository by removing legacy Node runtime sources and npm manifests no longer needed by the current image.
+- README rewritten and aligned with current runtime/deploy behavior.
 - Internal container port aligned with env-driven port (`HTTP_PORT`, image default `8090`).
 - Added `DATA_DIR` to `.env.example`.
+- Rollback version policy is now universal for all containers:
+  - always show current configured tag first (`latest`, `stable`, or fixed tag)
+  - then append top 3 semantic `v*` tags
+- Docker Hub tag discovery hardened:
+  - fallback to Hub tags API when registry `/v2/.../tags/list` is empty or missing `v*` tags
+  - TLS certificate verify fallback retry for environments with incomplete CA bundle
 - Rollback hardening:
   - If rollback target digest is already running, action is skipped (`no-op`) to avoid RouterOS `skip importing same version` breakage.
   - Prevents accidental container corruption on immediate `backup -> rollback` with no update in between.
