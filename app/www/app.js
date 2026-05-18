@@ -2,12 +2,11 @@ const state = {
   containers: [],
   busy: false,
   checkById: {},
-  theme: "light",
+  theme: "auto",
   themeStyle: "modern"
 };
 
 const els = {
-  refreshBtn: document.getElementById("refreshBtn"),
   themeStyleCss: document.getElementById("themeStyleCss"),
   themeToggle: document.getElementById("themeToggle"),
   themeMenu: document.getElementById("themeMenu"),
@@ -30,6 +29,7 @@ const els = {
 };
 
 const THEME_ITEMS = [
+  { value: "auto", label: "Auto", icon: "/images/ui/theme-auto.svg" },
   { value: "light", label: "Light", icon: "/images/ui/theme-light.svg" },
   { value: "dark", label: "Dark", icon: "/images/ui/theme-dark.svg" }
 ];
@@ -38,6 +38,7 @@ const THEME_STYLE_ITEMS = [
   { value: "modern", label: "Modern" },
   { value: "classic", label: "Classic" }
 ];
+const prefersDarkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 
 function closeThemeMenu() {
   els.themeMenu.classList.remove("open");
@@ -61,7 +62,10 @@ function updateThemeStyleButton() {
 }
 
 function applyTheme() {
-  document.documentElement.setAttribute("data-theme", state.theme);
+  const resolvedTheme = state.theme === "auto"
+    ? (prefersDarkQuery && prefersDarkQuery.matches ? "dark" : "light")
+    : state.theme;
+  document.documentElement.setAttribute("data-theme", resolvedTheme);
   els.themeSelect.value = state.theme;
   updateThemeButton();
 }
@@ -76,16 +80,18 @@ function applyThemeStyle() {
   updateThemeStyleButton();
 }
 
-function setTheme(value) {
-  state.theme = value === "dark" ? "dark" : "light";
-  localStorage.setItem("mcug_theme", state.theme);
+async function setTheme(value) {
+  state.theme = ["auto", "light", "dark"].includes(value) ? value : "auto";
   applyTheme();
+  await saveSettings({ theme: state.theme });
+  await loadContainers();
 }
 
-function setThemeStyle(value) {
+async function setThemeStyle(value) {
   state.themeStyle = value === "classic" ? "classic" : "modern";
-  localStorage.setItem("mcug_theme_style", state.themeStyle);
   applyThemeStyle();
+  await saveSettings({ theme_style: state.themeStyle });
+  await loadContainers();
 }
 
 function renderThemeMenu() {
@@ -96,9 +102,13 @@ function renderThemeMenu() {
     button.className = "theme-item";
     button.setAttribute("role", "option");
     button.innerHTML = `<img src="${item.icon}" alt="" /><span>${item.label}</span>`;
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       closeThemeMenu();
-      setTheme(item.value);
+      try {
+        await setTheme(item.value);
+      } catch (error) {
+        appendLog(`Theme save failed: ${error.message}`);
+      }
     });
     els.themeMenu.appendChild(button);
   });
@@ -113,22 +123,40 @@ function renderThemeStyleMenu() {
     button.className = "theme-item";
     button.setAttribute("role", "option");
     button.innerHTML = `<img src="/images/ui/theme-style.svg" alt="" /><span>${item.label}</span>`;
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       closeThemeStyleMenu();
-      setThemeStyle(item.value);
+      try {
+        await setThemeStyle(item.value);
+      } catch (error) {
+        appendLog(`Theme style save failed: ${error.message}`);
+      }
     });
     els.themeStyleMenu.appendChild(button);
   });
   updateThemeStyleButton();
 }
 
-function initAppearance() {
-  const savedTheme = localStorage.getItem("mcug_theme");
-  const savedStyle = localStorage.getItem("mcug_theme_style");
+async function loadSettings() {
+  const result = await apiRequest("/api/settings.json");
+  const incoming = result?.settings || {};
+  state.theme = ["auto", "light", "dark"].includes(incoming.theme) ? incoming.theme : "auto";
+  const rawThemeStyle = incoming.theme_style || incoming.themeStyle;
+  state.themeStyle = rawThemeStyle === "classic" ? "classic" : "modern";
+}
 
-  state.theme = savedTheme === "dark" ? "dark" : "light";
-  state.themeStyle = savedStyle === "classic" ? "classic" : "modern";
+async function saveSettings(patch) {
+  await apiRequest("/api/settings", {
+    method: "POST",
+    body: JSON.stringify(patch || {})
+  });
+}
 
+async function initAppearance() {
+  try {
+    await loadSettings();
+  } catch (error) {
+    appendLog(`Settings load failed, using defaults: ${error.message}`);
+  }
   applyThemeStyle();
   applyTheme();
   renderThemeStyleMenu();
@@ -151,7 +179,6 @@ function appendLog(message, obj) {
 function setBusy(value) {
   state.busy = value;
   const disabled = Boolean(value);
-  els.refreshBtn.disabled = disabled;
   els.bulkButtons.forEach((btn) => {
     btn.disabled = disabled;
   });
@@ -360,8 +387,6 @@ async function runBulkAction(action) {
   }
 }
 
-els.refreshBtn.addEventListener("click", loadContainers);
-
 els.themeToggle.addEventListener("click", () => {
   const open = els.themeMenu.classList.toggle("open");
   els.themeToggle.setAttribute("aria-expanded", open ? "true" : "false");
@@ -398,5 +423,22 @@ els.bulkButtons.forEach((btn) => {
   btn.addEventListener("click", () => runBulkAction(btn.dataset.bulkAction));
 });
 
-initAppearance();
-loadContainers();
+if (prefersDarkQuery) {
+  const onThemePrefChange = () => {
+    if (state.theme === "auto") {
+      applyTheme();
+    }
+  };
+  if (prefersDarkQuery.addEventListener) {
+    prefersDarkQuery.addEventListener("change", onThemePrefChange);
+  } else if (prefersDarkQuery.addListener) {
+    prefersDarkQuery.addListener(onThemePrefChange);
+  }
+}
+
+async function start() {
+  await initAppearance();
+  await loadContainers();
+}
+
+start();

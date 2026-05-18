@@ -1,4 +1,5 @@
 const path = require("node:path");
+const fs = require("node:fs/promises");
 const express = require("express");
 const dotenv = require("dotenv");
 const { RouterOsClient, RouterOsRequestError } = require("./routeros-client");
@@ -7,6 +8,11 @@ dotenv.config();
 
 const app = express();
 const port = Number(process.env.HTTP_PORT || process.env.PORT || 3030);
+const settingsPath = path.join(__dirname, "..", "app", "settings.json");
+const defaultSettings = {
+  theme: "auto",
+  theme_style: "modern"
+};
 
 const client = new RouterOsClient({
   baseUrl: process.env.ROUTEROS_BASE_URL,
@@ -34,6 +40,43 @@ const client = new RouterOsClient({
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "..", "app", "www")));
+
+function normalizeSettings(input) {
+  const raw = input && typeof input === "object" ? input : {};
+  const theme = ["auto", "light", "dark"].includes(String(raw.theme || "").toLowerCase())
+    ? String(raw.theme).toLowerCase()
+    : defaultSettings.theme;
+  const rawThemeStyle = raw.theme_style || raw.themeStyle;
+  const themeStyle = ["modern", "classic"].includes(String(rawThemeStyle || "").toLowerCase())
+    ? String(rawThemeStyle).toLowerCase()
+    : defaultSettings.theme_style;
+
+  return { theme, theme_style: themeStyle };
+}
+
+async function readSettings() {
+  try {
+    const raw = await fs.readFile(settingsPath, "utf8");
+    return normalizeSettings(JSON.parse(raw));
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      return { ...defaultSettings };
+    }
+    throw error;
+  }
+}
+
+async function writeSettings(partial) {
+  const current = await readSettings();
+  const merged = {
+    ...current,
+    ...(partial && typeof partial === "object" ? partial : {})
+  };
+  const next = normalizeSettings(merged);
+  await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+  await fs.writeFile(settingsPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  return next;
+}
 
 function normalizeContainer(raw) {
   const id = raw[".id"] || raw.id || raw.number || raw.numbers || "";
@@ -104,6 +147,40 @@ app.get("/api/containers", async (req, res, next) => {
   try {
     const containers = await fetchNormalizedContainers();
     res.json({ ok: true, containers });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/settings.json", async (req, res, next) => {
+  try {
+    const settings = await readSettings();
+    res.json({ ok: true, settings });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/settings", async (req, res, next) => {
+  try {
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+      res.status(400).json({ ok: false, error: "Invalid settings payload" });
+      return;
+    }
+
+    const patch = {};
+    if (Object.prototype.hasOwnProperty.call(req.body, "theme")) {
+      patch.theme = req.body.theme;
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, "theme_style")) {
+      patch.theme_style = req.body.theme_style;
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, "themeStyle")) {
+      patch.theme_style = req.body.themeStyle;
+    }
+
+    const settings = await writeSettings(patch);
+    res.json({ ok: true, settings });
   } catch (error) {
     next(error);
   }

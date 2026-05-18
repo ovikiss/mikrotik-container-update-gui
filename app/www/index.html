@@ -45,18 +45,17 @@
                 aria-haspopup="listbox"
                 aria-expanded="false"
               >
-                <img id="themeCurrentIcon" src="/images/ui/theme-light.svg" alt="" />
-                <span id="themeCurrentLabel">Light</span>
+                <img id="themeCurrentIcon" src="/images/ui/theme-auto.svg" alt="" />
+                <span id="themeCurrentLabel">Auto</span>
               </button>
               <div class="theme-menu" id="themeMenu" role="listbox" aria-label="Theme options"></div>
               <select id="themeSelect" class="sr-only" tabindex="-1" aria-hidden="true">
+                <option value="auto">Auto</option>
                 <option value="light">Light</option>
                 <option value="dark">Dark</option>
               </select>
             </div>
           </label>
-
-          <button id="refreshBtn" class="btn">Refresh</button>
         </div>
       </header>
 

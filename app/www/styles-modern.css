@@ -433,8 +433,7 @@ html[data-theme="dark"] .log-box {
     width: 100%;
   }
 
-  .theme-toggle,
-  #refreshBtn {
+  .theme-toggle {
     width: 100%;
     justify-content: flex-start;
   }
