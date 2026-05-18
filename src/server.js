@@ -100,8 +100,50 @@ async function writeRollbackState(nextState) {
   await fs.writeFile(rollbackStatePath, `${JSON.stringify(nextState, null, 2)}\n`, "utf8");
 }
 
+function buildRollbackSnapshot(container, remoteImage, rollbackRef) {
+  return {
+    containerId: container.id,
+    containerName: container.name,
+    remoteImage: String(remoteImage),
+    rollbackType: "manifest-digest",
+    rollbackManifestDigest: String(rollbackRef?.manifestDigest || ""),
+    pinnedImage: String(rollbackRef?.pinnedImage || ""),
+    savedAt: new Date().toISOString()
+  };
+}
+
+function getRollbackCandidateFromEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+
+  const lastKnownGood = entry.lastKnownGood;
+  if (lastKnownGood && typeof lastKnownGood === "object" && lastKnownGood.pinnedImage) {
+    return { ...lastKnownGood, strategy: "last-known-good" };
+  }
+
+  const manualBackup = entry.manualBackup;
+  if (manualBackup && typeof manualBackup === "object" && manualBackup.pinnedImage) {
+    return { ...manualBackup, strategy: "manual-backup" };
+  }
+
+  if (entry.pinnedImage) {
+    return {
+      containerId: entry.containerId || "",
+      containerName: entry.containerName || "",
+      remoteImage: entry.remoteImage || "",
+      rollbackType: entry.rollbackType || "legacy",
+      rollbackManifestDigest: entry.rollbackManifestDigest || "",
+      pinnedImage: entry.pinnedImage,
+      savedAt: entry.savedAt || "",
+      strategy: "legacy"
+    };
+  }
+
+  return null;
+}
+
 async function saveRollbackPoint(container, options = {}) {
   const strict = Boolean(options.strict);
+  const reason = String(options.reason || "manual");
   const remoteImage = container.raw?.["remote-image"] || container.image || "";
   let rollbackRef;
 
@@ -126,28 +168,64 @@ async function saveRollbackPoint(container, options = {}) {
   }
 
   const state = await readRollbackState();
-  state[container.name] = {
-    containerId: container.id,
-    containerName: container.name,
-    remoteImage: String(remoteImage),
-    rollbackType: "manifest-digest",
-    rollbackManifestDigest: String(rollbackRef?.manifestDigest || ""),
-    pinnedImage,
-    savedAt: new Date().toISOString()
-  };
+  const current = state[container.name] && typeof state[container.name] === "object"
+    ? state[container.name]
+    : {};
+  const snapshot = buildRollbackSnapshot(container, remoteImage, rollbackRef);
+
+  if (reason === "update") {
+    state[container.name] = {
+      ...current,
+      containerId: snapshot.containerId,
+      containerName: snapshot.containerName,
+      remoteImage: snapshot.remoteImage,
+      rollbackType: snapshot.rollbackType,
+      rollbackManifestDigest: snapshot.rollbackManifestDigest,
+      pinnedImage: snapshot.pinnedImage,
+      savedAt: snapshot.savedAt,
+      backupSource: "update",
+      lastKnownGood: snapshot
+    };
+  } else {
+    const hasLastKnownGood = Boolean(current?.lastKnownGood?.pinnedImage);
+    state[container.name] = {
+      ...current,
+      containerId: snapshot.containerId,
+      containerName: snapshot.containerName,
+      remoteImage: snapshot.remoteImage,
+      manualBackup: snapshot
+    };
+
+    if (!hasLastKnownGood) {
+      state[container.name].rollbackType = snapshot.rollbackType;
+      state[container.name].rollbackManifestDigest = snapshot.rollbackManifestDigest;
+      state[container.name].pinnedImage = snapshot.pinnedImage;
+      state[container.name].savedAt = snapshot.savedAt;
+      state[container.name].backupSource = "manual";
+    }
+  }
+
   await writeRollbackState(state);
-  return state[container.name];
+  const effective = getRollbackCandidateFromEntry(state[container.name]);
+  return {
+    ...snapshot,
+    reason,
+    activeForRollback: Boolean(
+      effective?.pinnedImage && effective.pinnedImage === snapshot.pinnedImage
+    )
+  };
 }
 
 async function runCustomRollback(container) {
   const state = await readRollbackState();
   const entry = state[container.name];
+  const candidate = getRollbackCandidateFromEntry(entry);
 
-  if (!entry?.pinnedImage) {
+  if (!candidate?.pinnedImage) {
     throw new Error("No rollback backup found for this container. Run update first.");
   }
 
-  if (entry.rollbackType !== "manifest-digest") {
+  if (candidate.rollbackType !== "manifest-digest") {
     throw new Error(
       "Rollback backup format is legacy and not pullable. Run Backup again before rollback."
     );
@@ -159,20 +237,21 @@ async function runCustomRollback(container) {
       previousImage,
       container.raw?.arch || ""
     );
-    if (String(currentRef?.pinnedImage || "") === String(entry.pinnedImage || "")) {
+    if (String(currentRef?.pinnedImage || "") === String(candidate.pinnedImage || "")) {
       return {
         mode: "custom-digest-rollback",
         noop: true,
         message: "Container is already on the backup digest; rollback was skipped.",
-        rollbackImage: entry.pinnedImage,
-        backupSavedAt: entry.savedAt || ""
+        rollbackImage: candidate.pinnedImage,
+        backupSavedAt: candidate.savedAt || "",
+        rollbackStrategy: candidate.strategy || "unknown"
       };
     }
   } catch (error) {
     // If comparison fails, continue with normal rollback attempt.
   }
 
-  await client.setContainerRemoteImage(container, entry.pinnedImage);
+  await client.setContainerRemoteImage(container, candidate.pinnedImage);
 
   let updateResult;
   try {
@@ -195,19 +274,21 @@ async function runCustomRollback(container) {
         : "Rollback image is unavailable in registry, and automatic restore failed."
     );
     friendlyError.details = {
-      rollbackImage: entry.pinnedImage,
+      rollbackImage: candidate.pinnedImage,
       previousImage,
       rollbackError: rollbackError.message,
       restored: Boolean(restoreResult),
-      restoreError: restoreError || null
+      restoreError: restoreError || null,
+      rollbackStrategy: candidate.strategy || "unknown"
     };
     throw friendlyError;
   }
 
   return {
     mode: "custom-digest-rollback",
-    rollbackImage: entry.pinnedImage,
-    backupSavedAt: entry.savedAt || "",
+    rollbackImage: candidate.pinnedImage,
+    backupSavedAt: candidate.savedAt || "",
+    rollbackStrategy: candidate.strategy || "unknown",
     updateResult
   };
 }
@@ -268,7 +349,7 @@ async function fetchNormalizedContainers() {
     .map(normalizeContainer)
     .map((container) => ({
       ...container,
-      hasRollbackBackup: Boolean(rollbackState?.[container.name]?.pinnedImage)
+      hasRollbackBackup: Boolean(getRollbackCandidateFromEntry(rollbackState?.[container.name]))
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -361,7 +442,7 @@ app.post("/api/containers/:id/actions/:action", async (req, res, next) => {
     }
 
     if (action === "backup") {
-      const backup = await saveRollbackPoint(container, { strict: true });
+      const backup = await saveRollbackPoint(container, { strict: true, reason: "manual" });
       res.json({
         ok: true,
         action,
@@ -381,7 +462,7 @@ app.post("/api/containers/:id/actions/:action", async (req, res, next) => {
     let warning = "";
     try {
       if (action === "update") {
-        const backup = await saveRollbackPoint(container);
+        const backup = await saveRollbackPoint(container, { reason: "update" });
         if (!backup) {
           warning = "Auto-backup skipped: rollback manifest digest is unavailable";
         }
@@ -482,7 +563,10 @@ app.post("/api/containers/actions/:action", async (req, res, next) => {
         }
 
         if (action === "backup") {
-          const backup = await saveRollbackPoint(container, { strict: true });
+          const backup = await saveRollbackPoint(container, {
+            strict: true,
+            reason: "manual"
+          });
           results.push({
             ok: true,
             container: { id: container.id, name: container.name },
@@ -495,7 +579,7 @@ app.post("/api/containers/actions/:action", async (req, res, next) => {
         }
 
         if (action === "update") {
-          const backup = await saveRollbackPoint(container);
+          const backup = await saveRollbackPoint(container, { reason: "update" });
           if (!backup) {
             warning = "Auto-backup skipped: rollback manifest digest is unavailable";
           }

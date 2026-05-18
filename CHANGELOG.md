@@ -8,6 +8,10 @@
 - Rollback hardening:
   - If rollback target digest is already running, action is skipped (`no-op`) to avoid RouterOS `skip importing same version` breakage.
   - Prevents accidental container corruption on immediate `backup -> rollback` with no update in between.
+- Backup model refined for updates:
+  - `update` now stores a dedicated `lastKnownGood` snapshot (the version before update).
+  - manual `backup` no longer overrides `lastKnownGood`.
+  - `rollback` prefers `lastKnownGood` (exactly the previous functional version), then falls back to manual backup.
 
 ## v0.2 - 2026-05-18
 
