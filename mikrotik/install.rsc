@@ -73,7 +73,7 @@
   :local mcugOldId [/container/find where name=$mcugContainerName]
   :do { /container/stop $mcugOldId } on-error={ :put "Container stop skipped (already stopped)." }
   :local mcugWait 0
-  :while ([:len [/container/find where .id=$mcugOldId and running=true]] > 0 && $mcugWait < 20) do={
+  :while ([:len [/container/find where .id=$mcugOldId and running=yes]] > 0 && $mcugWait < 20) do={
     /delay 1
     :set mcugWait ($mcugWait + 1)
   }
