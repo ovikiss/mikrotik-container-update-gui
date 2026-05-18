@@ -154,6 +154,24 @@ async function runCustomRollback(container) {
   }
 
   const previousImage = String(container.raw?.["remote-image"] || container.image || "");
+  try {
+    const currentRef = await client.resolveRollbackImageReference(
+      previousImage,
+      container.raw?.arch || ""
+    );
+    if (String(currentRef?.pinnedImage || "") === String(entry.pinnedImage || "")) {
+      return {
+        mode: "custom-digest-rollback",
+        noop: true,
+        message: "Container is already on the backup digest; rollback was skipped.",
+        rollbackImage: entry.pinnedImage,
+        backupSavedAt: entry.savedAt || ""
+      };
+    }
+  } catch (error) {
+    // If comparison fails, continue with normal rollback attempt.
+  }
+
   await client.setContainerRemoteImage(container, entry.pinnedImage);
 
   let updateResult;
