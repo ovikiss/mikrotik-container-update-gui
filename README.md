@@ -42,10 +42,11 @@ Variabile uzuale în `mikrotik/install.rsc`:
 ## Local Dev
 
 ```bash
-npm install
 cp .env.example .env
-npm start
+python3 src/server.py
 ```
+
+If gateway auto-detect is not available on your host OS, set `ROUTEROS_BASE_URL` in `.env`.
 
 Default local:
 - [http://localhost:3030](http://localhost:3030)

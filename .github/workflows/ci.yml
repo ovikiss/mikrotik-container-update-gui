@@ -15,6 +15,10 @@ jobs:
         run: |
           bash -n scripts/install-to-router.sh
 
+      - name: Validate Python sources
+        run: |
+          python3 -m py_compile src/server.py src/routeros_client.py
+
       - name: Validate Docker build
         run: |
           docker build -t mcug-ci-test .

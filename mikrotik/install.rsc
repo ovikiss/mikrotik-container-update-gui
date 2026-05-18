@@ -100,8 +100,7 @@
 }
 
 # Deploy GUI container from remote image
-# Explicit entrypoint/cmd avoids RouterOS restart glitches with docker-entrypoint.sh on some builds.
-/container/add name=$mcugContainerName remote-image=$mcugImage interface=$mcugVeth dns="192.168.88.1,1.1.1.1" root-dir=$mcugRootDir envlist="mcug" mountlists="mcug" entrypoint="/usr/local/bin/node" cmd="src/server.js" start-on-boot=yes logging=yes
+/container/add name=$mcugContainerName remote-image=$mcugImage interface=$mcugVeth dns="192.168.88.1,1.1.1.1" root-dir=$mcugRootDir envlist="mcug" mountlists="mcug" start-on-boot=yes logging=yes
 :delay 2
 :do { /container/start [find where name=$mcugContainerName] } on-error={ :put "Container start skipped (already starting)." }
 
