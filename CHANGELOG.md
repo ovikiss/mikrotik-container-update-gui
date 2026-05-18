@@ -15,6 +15,10 @@
   - falls back to `running=true/false` -> `running/stopped`
 - RouterOS deploy/install flow hardened (safe stop/wait/remove before redeploy).
 - RouterOS target payload field is automatic (`.id`) without manual env var.
+- Added explicit `Backup` action (single + bulk) to create rollback points manually.
+- `Update` now attempts automatic backup before update and reports warning if `image-id` is unavailable.
+- Rollback buttons are disabled until a backup exists for that container.
+- Custom rollback fallback via pinned digest is used when RouterOS native `/container/rollback` is unavailable.
 
 ## v0.1 - 2026-05-17
 

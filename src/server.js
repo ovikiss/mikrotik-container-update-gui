@@ -117,11 +117,15 @@ async function writeRollbackState(nextState) {
   await fs.writeFile(rollbackStatePath, `${JSON.stringify(nextState, null, 2)}\n`, "utf8");
 }
 
-async function saveRollbackPoint(container) {
+async function saveRollbackPoint(container, options = {}) {
+  const strict = Boolean(options.strict);
   const remoteImage = container.raw?.["remote-image"] || container.image || "";
   const imageId = container.raw?.["image-id"] || "";
   const pinnedImage = buildPinnedImageReference(remoteImage, imageId);
   if (!pinnedImage) {
+    if (strict) {
+      throw new Error("Cannot create backup: container image-id is missing");
+    }
     return null;
   }
 
@@ -184,7 +188,7 @@ function normalizeContainer(raw) {
 
 function actionFromParam(value) {
   const action = String(value || "").toLowerCase();
-  if (["check", "update", "rollback"].includes(action)) {
+  if (["check", "backup", "update", "rollback"].includes(action)) {
     return action;
   }
   return null;
@@ -204,8 +208,18 @@ function isUnsupportedActionError(action, error) {
 }
 
 async function fetchNormalizedContainers() {
-  const containers = await client.listContainers();
-  return containers.map(normalizeContainer).sort((a, b) => a.name.localeCompare(b.name));
+  const [containers, rollbackState] = await Promise.all([
+    client.listContainers(),
+    readRollbackState()
+  ]);
+
+  return containers
+    .map(normalizeContainer)
+    .map((container) => ({
+      ...container,
+      hasRollbackBackup: Boolean(rollbackState?.[container.name]?.pinnedImage)
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 app.get("/api/health", async (req, res, next) => {
@@ -295,10 +309,31 @@ app.post("/api/containers/:id/actions/:action", async (req, res, next) => {
       return;
     }
 
+    if (action === "backup") {
+      const backup = await saveRollbackPoint(container, { strict: true });
+      res.json({
+        ok: true,
+        action,
+        container: {
+          id: container.id,
+          name: container.name
+        },
+        result: {
+          mode: "custom-backup",
+          ...backup
+        }
+      });
+      return;
+    }
+
     let result;
+    let warning = "";
     try {
       if (action === "update") {
-        await saveRollbackPoint(container);
+        const backup = await saveRollbackPoint(container);
+        if (!backup) {
+          warning = "Auto-backup skipped: container image-id is missing";
+        }
       }
       result = await client.runContainerAction(action, container);
     } catch (error) {
@@ -356,7 +391,8 @@ app.post("/api/containers/:id/actions/:action", async (req, res, next) => {
         id: container.id,
         name: container.name
       },
-      result
+      result,
+      ...(warning ? { warning } : {})
     });
   } catch (error) {
     next(error);
@@ -383,6 +419,7 @@ app.post("/api/containers/actions/:action", async (req, res, next) => {
     const results = [];
     for (const container of targetContainers) {
       try {
+        let warning = "";
         if (action === "check") {
           const checkResult = await client.checkContainerImage(container);
           results.push({
@@ -393,14 +430,31 @@ app.post("/api/containers/actions/:action", async (req, res, next) => {
           continue;
         }
 
+        if (action === "backup") {
+          const backup = await saveRollbackPoint(container, { strict: true });
+          results.push({
+            ok: true,
+            container: { id: container.id, name: container.name },
+            result: {
+              mode: "custom-backup",
+              ...backup
+            }
+          });
+          continue;
+        }
+
         if (action === "update") {
-          await saveRollbackPoint(container);
+          const backup = await saveRollbackPoint(container);
+          if (!backup) {
+            warning = "Auto-backup skipped: container image-id is missing";
+          }
         }
         const result = await client.runContainerAction(action, container);
         results.push({
           ok: true,
           container: { id: container.id, name: container.name },
-          result
+          result,
+          ...(warning ? { warning } : {})
         });
       } catch (error) {
         if (isUnsupportedActionError(action, error)) {

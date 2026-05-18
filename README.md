@@ -7,10 +7,11 @@ Current release: `v0.2` (see `CHANGELOG.md`).
 What it does:
 - Lists all containers dynamically from RouterOS REST API.
 - Works automatically with new containers added later.
-- Per-container actions: `check`, `update`, `rollback`.
+- Per-container actions: `check`, `backup`, `update`, `rollback`.
 - Bulk actions for all or selected containers.
 - Activity log in UI.
 - `check` uses digest/hash compare (`image-id` local vs registry digest), and never crashes UI if registry lookup is unavailable.
+- `backup` pins the current running image digest, so rollback can be done even when RouterOS native rollback endpoint is missing.
 
 ## Run mode
 

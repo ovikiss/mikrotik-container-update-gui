@@ -179,12 +179,28 @@ function appendLog(message, obj) {
 function setBusy(value) {
   state.busy = value;
   const disabled = Boolean(value);
+
+  const hasAnyRollbackBackup = state.containers.some((container) => container.hasRollbackBackup);
   els.bulkButtons.forEach((btn) => {
-    btn.disabled = disabled;
+    if (disabled) {
+      btn.disabled = true;
+      return;
+    }
+
+    const action = btn.dataset.bulkAction;
+    if (action === "rollback" && !hasAnyRollbackBackup) {
+      btn.disabled = true;
+      btn.title = "No rollback backups available yet. Run update first.";
+      return;
+    }
+
+    btn.disabled = false;
+    btn.title = "";
   });
 
   els.containersBody.querySelectorAll("button").forEach((btn) => {
-    btn.disabled = disabled;
+    const staticDisabled = btn.dataset.staticDisabled === "1";
+    btn.disabled = disabled || staticDisabled;
   });
 }
 
@@ -241,6 +257,7 @@ function renderRows() {
     fragment.querySelector('[data-col="image"]').textContent = container.image || "-";
 
     const checkState = state.checkById[container.id] || { state: "unchecked", text: "unchecked" };
+    const rollbackReady = Boolean(container.hasRollbackBackup);
     const updatePill = fragment.querySelector('[data-col="updateState"]');
     updatePill.textContent = checkState.text;
     updatePill.classList.remove("available", "current", "unknown");
@@ -251,10 +268,20 @@ function renderRows() {
     }
 
     fragment.querySelectorAll("[data-action]").forEach((btn) => {
+      btn.dataset.staticDisabled = "0";
+
       if (btn.dataset.action === "update") {
         const allowUpdate = checkState.state === "available";
         btn.classList.toggle("hidden", !allowUpdate);
       }
+
+      if (btn.dataset.action === "rollback") {
+        btn.dataset.staticDisabled = rollbackReady ? "0" : "1";
+        btn.title = rollbackReady
+          ? ""
+          : "Rollback backup unavailable. Run update first for this container.";
+      }
+
       btn.addEventListener("click", () => runSingleAction(container.id, btn.dataset.action));
     });
 
@@ -323,7 +350,10 @@ async function runSingleAction(id, action) {
     const result = await apiRequest(`/api/containers/${encodeURIComponent(id)}/actions/${action}`, {
       method: "POST"
     });
-    appendLog(`Action '${action}' completed for ${result.container.name}`, result.result);
+    appendLog(
+      `Action '${action}' completed for ${result.container.name}`,
+      result.warning ? { ...result.result, warning: result.warning } : result.result
+    );
 
     if (action === "check") {
       applyCheckResult(id, result.result);
@@ -351,6 +381,17 @@ async function runBulkAction(action) {
 
   if (action === "update" && ids.length === 0) {
     appendLog("No containers marked with updates. Run check first or select specific containers.");
+    return;
+  }
+
+  if (action === "rollback" && selectedIds.length === 0) {
+    ids = state.containers
+      .filter((container) => container.hasRollbackBackup)
+      .map((container) => container.id);
+  }
+
+  if (action === "rollback" && ids.length === 0) {
+    appendLog("No rollback backups available. Run update first on target containers.");
     return;
   }
 
