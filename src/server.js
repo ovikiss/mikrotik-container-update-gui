@@ -8,8 +8,11 @@ dotenv.config();
 
 const app = express();
 const port = Number(process.env.HTTP_PORT || process.env.PORT || 3030);
-const settingsPath = path.join(__dirname, "..", "app", "settings.json");
-const rollbackStatePath = path.join(__dirname, "..", "app", "rollback-state.json");
+const dataDir = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(__dirname, "..", "app");
+const settingsPath = path.join(dataDir, "settings.json");
+const rollbackStatePath = path.join(dataDir, "rollback-state.json");
 const defaultSettings = {
   theme: "auto",
   theme_style: "modern"
@@ -79,26 +82,6 @@ async function writeSettings(partial) {
   return next;
 }
 
-function normalizeDigest(value) {
-  const raw = String(value || "").trim().toLowerCase();
-  if (!raw) return "";
-  return raw.startsWith("sha256:") ? raw.slice(7) : raw;
-}
-
-function buildPinnedImageReference(remoteImage, imageId) {
-  const imageRef = String(remoteImage || "").trim();
-  const digest = normalizeDigest(imageId);
-  if (!imageRef || !digest) return "";
-
-  const noDigest = imageRef.split("@")[0];
-  const slashIndex = noDigest.lastIndexOf("/");
-  const colonIndex = noDigest.lastIndexOf(":");
-  const repoWithoutTag = colonIndex > slashIndex ? noDigest.slice(0, colonIndex) : noDigest;
-  if (!repoWithoutTag) return "";
-
-  return `${repoWithoutTag}@sha256:${digest}`;
-}
-
 async function readRollbackState() {
   try {
     const raw = await fs.readFile(rollbackStatePath, "utf8");
@@ -120,11 +103,24 @@ async function writeRollbackState(nextState) {
 async function saveRollbackPoint(container, options = {}) {
   const strict = Boolean(options.strict);
   const remoteImage = container.raw?.["remote-image"] || container.image || "";
-  const imageId = container.raw?.["image-id"] || "";
-  const pinnedImage = buildPinnedImageReference(remoteImage, imageId);
+  let rollbackRef;
+
+  try {
+    rollbackRef = await client.resolveRollbackImageReference(
+      remoteImage,
+      container.raw?.arch || ""
+    );
+  } catch (error) {
+    if (strict) {
+      throw new Error(`Cannot create backup: ${error.message}`);
+    }
+    return null;
+  }
+
+  const pinnedImage = rollbackRef?.pinnedImage;
   if (!pinnedImage) {
     if (strict) {
-      throw new Error("Cannot create backup: container image-id is missing");
+      throw new Error("Cannot create backup: rollback manifest digest is unavailable");
     }
     return null;
   }
@@ -134,7 +130,8 @@ async function saveRollbackPoint(container, options = {}) {
     containerId: container.id,
     containerName: container.name,
     remoteImage: String(remoteImage),
-    imageId: String(imageId),
+    rollbackType: "manifest-digest",
+    rollbackManifestDigest: String(rollbackRef?.manifestDigest || ""),
     pinnedImage,
     savedAt: new Date().toISOString()
   };
@@ -150,8 +147,44 @@ async function runCustomRollback(container) {
     throw new Error("No rollback backup found for this container. Run update first.");
   }
 
+  if (entry.rollbackType !== "manifest-digest") {
+    throw new Error(
+      "Rollback backup format is legacy and not pullable. Run Backup again before rollback."
+    );
+  }
+
+  const previousImage = String(container.raw?.["remote-image"] || container.image || "");
   await client.setContainerRemoteImage(container, entry.pinnedImage);
-  const updateResult = await client.runContainerAction("update", container);
+
+  let updateResult;
+  try {
+    updateResult = await client.runContainerAction("update", container);
+  } catch (rollbackError) {
+    let restoreResult = null;
+    let restoreError = "";
+    try {
+      if (previousImage) {
+        await client.setContainerRemoteImage(container, previousImage);
+        restoreResult = await client.runContainerAction("update", container);
+      }
+    } catch (recoveryError) {
+      restoreError = recoveryError.message;
+    }
+
+    const friendlyError = new Error(
+      restoreResult
+        ? "Rollback image is unavailable in registry. Current image was restored automatically."
+        : "Rollback image is unavailable in registry, and automatic restore failed."
+    );
+    friendlyError.details = {
+      rollbackImage: entry.pinnedImage,
+      previousImage,
+      rollbackError: rollbackError.message,
+      restored: Boolean(restoreResult),
+      restoreError: restoreError || null
+    };
+    throw friendlyError;
+  }
 
   return {
     mode: "custom-digest-rollback",
@@ -332,7 +365,7 @@ app.post("/api/containers/:id/actions/:action", async (req, res, next) => {
       if (action === "update") {
         const backup = await saveRollbackPoint(container);
         if (!backup) {
-          warning = "Auto-backup skipped: container image-id is missing";
+          warning = "Auto-backup skipped: rollback manifest digest is unavailable";
         }
       }
       result = await client.runContainerAction(action, container);
@@ -362,7 +395,7 @@ app.post("/api/containers/:id/actions/:action", async (req, res, next) => {
                 id: container.id,
                 name: container.name
               },
-              details: error.details || null
+              details: fallbackError.details || error.details || null
             });
             return;
           }
@@ -446,7 +479,7 @@ app.post("/api/containers/actions/:action", async (req, res, next) => {
         if (action === "update") {
           const backup = await saveRollbackPoint(container);
           if (!backup) {
-            warning = "Auto-backup skipped: container image-id is missing";
+            warning = "Auto-backup skipped: rollback manifest digest is unavailable";
           }
         }
         const result = await client.runContainerAction(action, container);
@@ -474,7 +507,7 @@ app.post("/api/containers/actions/:action", async (req, res, next) => {
                 ok: false,
                 container: { id: container.id, name: container.name },
                 error: fallbackError.message,
-                details: error.details || null
+                details: fallbackError.details || error.details || null
               });
               continue;
             }

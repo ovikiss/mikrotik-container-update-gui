@@ -19,6 +19,10 @@
 - `Update` now attempts automatic backup before update and reports warning if `image-id` is unavailable.
 - Rollback buttons are disabled until a backup exists for that container.
 - Custom rollback fallback via pinned digest is used when RouterOS native `/container/rollback` is unavailable.
+- Backup/rollback now use pullable manifest digests (`repo@sha256:<manifest>`), not config digests.
+- Legacy rollback backups are rejected with a clear message and require a fresh `Backup`.
+- Rollback auto-recovers the previous `remote-image` if the backup digest is unavailable.
+- Persistent app state moved to `/data` mount (`usb1`) so settings and rollback backups survive redeploy.
 
 ## v0.1 - 2026-05-17
 

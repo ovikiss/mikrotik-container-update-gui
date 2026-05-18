@@ -95,6 +95,44 @@ function normalizeDigest(value) {
   return raw.startsWith("sha256:") ? raw.slice(7) : raw;
 }
 
+function stripImageTagAndDigest(imageRef) {
+  const input = String(imageRef || "").trim();
+  if (!input) return "";
+
+  const withoutDigest = input.split("@")[0];
+  const slashIndex = withoutDigest.lastIndexOf("/");
+  const colonIndex = withoutDigest.lastIndexOf(":");
+  return colonIndex > slashIndex ? withoutDigest.slice(0, colonIndex) : withoutDigest;
+}
+
+function selectManifestForArchitecture(manifests, preferredArchitecture) {
+  const entries = Array.isArray(manifests) ? manifests : [];
+  if (entries.length === 0) return null;
+
+  const arch = String(preferredArchitecture || "").toLowerCase();
+  const findBy = (archName, variant) =>
+    entries.find((item) => {
+      if (item?.platform?.architecture !== archName) return false;
+      if (!variant) return true;
+      return String(item?.platform?.variant || "").toLowerCase() === variant;
+    });
+
+  if (arch.includes("arm64")) {
+    return findBy("arm64") || findBy("arm") || entries[0];
+  }
+  if (arch.startsWith("arm")) {
+    return findBy("arm", "v7") || findBy("arm") || findBy("arm64") || entries[0];
+  }
+  if (arch.includes("amd64") || arch.includes("x86_64")) {
+    return findBy("amd64") || entries[0];
+  }
+  if (arch.includes("386") || arch === "x86") {
+    return findBy("386") || entries[0];
+  }
+
+  return findBy("arm", "v7") || findBy("arm64") || findBy("arm") || entries[0];
+}
+
 function parseImageReference(imageRef) {
   const input = String(imageRef || "").trim();
   if (!input) {
@@ -418,7 +456,7 @@ class RouterOsClient {
     return secondTry;
   }
 
-  async resolveRemoteConfigDigest(imageRef) {
+  async resolveRemoteConfigDigest(imageRef, preferredArchitecture) {
     const parsed = parseImageReference(imageRef);
     const baseUrl = `https://${parsed.registry}/v2/${parsed.repository}/manifests/${parsed.reference}`;
 
@@ -426,11 +464,10 @@ class RouterOsClient {
     let manifest = manifestResult.data;
 
     if (manifest && Array.isArray(manifest.manifests) && !manifest.config) {
-      const preferredManifest =
-        manifest.manifests.find((item) => item.platform?.architecture === "arm" && item.platform?.variant === "v7") ||
-        manifest.manifests.find((item) => item.platform?.architecture === "arm64") ||
-        manifest.manifests.find((item) => item.platform?.architecture === "arm") ||
-        manifest.manifests[0];
+      const preferredManifest = selectManifestForArchitecture(
+        manifest.manifests,
+        preferredArchitecture
+      );
 
       if (!preferredManifest?.digest) {
         throw new Error("Could not resolve a child manifest digest");
@@ -453,13 +490,60 @@ class RouterOsClient {
     };
   }
 
+  async resolveRollbackImageReference(imageRef, preferredArchitecture) {
+    const parsed = parseImageReference(imageRef);
+    const baseImage = stripImageTagAndDigest(parsed.original);
+    if (!baseImage) {
+      throw new Error("Could not resolve repository for rollback backup");
+    }
+
+    const baseUrl = `https://${parsed.registry}/v2/${parsed.repository}/manifests/${parsed.reference}`;
+    const manifestResult = await this.fetchRegistryManifestWithAuth(baseUrl);
+    const manifest = manifestResult.data;
+
+    let manifestDigest = "";
+    if (manifest && Array.isArray(manifest.manifests) && !manifest.config) {
+      const preferredManifest = selectManifestForArchitecture(
+        manifest.manifests,
+        preferredArchitecture
+      );
+
+      if (!preferredManifest?.digest) {
+        throw new Error("Could not resolve rollback manifest digest");
+      }
+      manifestDigest = String(preferredManifest.digest);
+    } else {
+      const headerDigest = String(
+        manifestResult.response.headers.get("docker-content-digest") || ""
+      );
+      if (headerDigest) {
+        manifestDigest = headerDigest;
+      } else if (String(parsed.reference).startsWith("sha256:")) {
+        manifestDigest = String(parsed.reference);
+      }
+    }
+
+    if (!normalizeDigest(manifestDigest)) {
+      throw new Error("Rollback manifest digest is unavailable");
+    }
+
+    return {
+      imageRef: parsed.original,
+      manifestDigest,
+      pinnedImage: `${baseImage}@${manifestDigest}`
+    };
+  }
+
   async checkContainerImage(container) {
     const localImageId = String(container.raw?.["image-id"] || "");
     const normalizedLocalImageId = normalizeDigest(localImageId);
     const remoteImageRef = container.raw?.["remote-image"] || container.image;
 
     try {
-      const remote = await this.resolveRemoteConfigDigest(remoteImageRef);
+      const remote = await this.resolveRemoteConfigDigest(
+        remoteImageRef,
+        container.raw?.arch || ""
+      );
       const upToDate =
         normalizedLocalImageId &&
         remote.normalizedRemoteConfigDigest &&

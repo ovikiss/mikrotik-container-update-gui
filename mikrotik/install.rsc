@@ -4,6 +4,7 @@
 
 :local mcugContainerName "container-update-gui"
 :local mcugImage "ghcr.io/ovikiss/mikrotik-container-update-gui:latest"
+:local mcugDataPath "/usb1/mcug-data"
 :local mcugRootDir "/usb1/containers/container-update-gui"
 :local mcugPullDir "/usb1/pull"
 
@@ -24,6 +25,7 @@
 :local mcugApiPassword "ChangeMe-Now-Strong-Password"
 
 # Ensure directories on disk
+:if ([:len [/file find where name="usb1/mcug-data"]] = 0) do={ /file add name="usb1/mcug-data" type=directory }
 :if ([:len [/file find where name="usb1/containers"]] = 0) do={ /file add name="usb1/containers" type=directory }
 :if ([:len [/file find where name="usb1/pull"]] = 0) do={ /file add name="usb1/pull" type=directory }
 
@@ -67,6 +69,11 @@
 /container/envs/add list="mcug" key="HTTP_PORT" value=$mcugHttpPort
 /container/envs/add list="mcug" key="ROUTEROS_USERNAME" value=$mcugApiUser
 /container/envs/add list="mcug" key="ROUTEROS_PASSWORD" value=$mcugApiPassword
+/container/envs/add list="mcug" key="DATA_DIR" value="/data"
+
+# Prepare mount list for persistent settings/rollback state
+:foreach m in=[/container/mounts/find where list="mcug"] do={ /container/mounts/remove $m }
+/container/mounts/add list="mcug" src=$mcugDataPath dst="/data"
 
 # Replace existing GUI container if present
 :if ([:len [/container/find where name=$mcugContainerName]] > 0) do={
@@ -94,7 +101,7 @@
 
 # Deploy GUI container from remote image
 # Explicit entrypoint/cmd avoids RouterOS restart glitches with docker-entrypoint.sh on some builds.
-/container/add name=$mcugContainerName remote-image=$mcugImage interface=$mcugVeth dns="192.168.88.1,1.1.1.1" root-dir=$mcugRootDir envlist="mcug" entrypoint="/usr/local/bin/node" cmd="src/server.js" start-on-boot=yes logging=yes
+/container/add name=$mcugContainerName remote-image=$mcugImage interface=$mcugVeth dns="192.168.88.1,1.1.1.1" root-dir=$mcugRootDir envlist="mcug" mountlists="mcug" entrypoint="/usr/local/bin/node" cmd="src/server.js" start-on-boot=yes logging=yes
 :delay 2
 :do { /container/start [find where name=$mcugContainerName] } on-error={ :put "Container start skipped (already starting)." }
 

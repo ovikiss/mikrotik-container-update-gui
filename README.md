@@ -11,7 +11,7 @@ What it does:
 - Bulk actions for all or selected containers.
 - Activity log in UI.
 - `check` uses digest/hash compare (`image-id` local vs registry digest), and never crashes UI if registry lookup is unavailable.
-- `backup` pins the current running image digest, so rollback can be done even when RouterOS native rollback endpoint is missing.
+- `backup` pins the current running manifest digest (`repo@sha256:...`) for exact rollback when RouterOS native rollback endpoint is missing.
 
 ## Run mode
 
@@ -37,7 +37,7 @@ This script will:
 1. Build `linux/arm/v7` image locally.
 2. Push image to `ghcr.io/ovikiss/mikrotik-container-update-gui:latest`.
 3. Upload/import `mikrotik/install.rsc`.
-4. Create/update RouterOS container + minimal env list + one firewall rule for LAN access (`mcug-gui`) and remove legacy `mcug-egress`/`mcug-forward` rules.
+4. Create/update RouterOS container + persistent `/data` mount on `usb1` (settings + rollback state) + one firewall rule for LAN access (`mcug-gui`) and remove legacy `mcug-egress`/`mcug-forward` rules.
 
 After install, open:
 - `http://192.168.88.1:8090/`
@@ -46,7 +46,7 @@ After install, open:
 
 Edit variables at top of `mikrotik/install.rsc` if needed:
 - network/veth/bridge values (`mcugVeth`, `mcugBridge`, `mcugSubnet`)
-- storage paths (`mcugRootDir`, `mcugPullDir`)
+- storage paths (`mcugDataPath`, `mcugRootDir`, `mcugPullDir`)
 - UI port/NAT (`mcugHttpPort`, `mcugLanCidr`)
 - RouterOS API user/password (`mcugApiUser`, `mcugApiPassword`)
 
@@ -67,4 +67,5 @@ Open:
 
 - RouterOS service `www` is enabled for internal REST calls from the container network.
 - `ROUTEROS_BASE_URL` is optional; when missing, app auto-detects router gateway from `/proc/net/route` (defaulting to `http://<gateway>`).
+- Persistent app state (`settings.json`, `rollback-state.json`) is stored under `/data` and mapped to `usb1` via `mountlists="mcug"`.
 - On RouterOS v7.22, REST update works with container `".id"` payload (selected automatically); `check-for-updates` is not exposed, so digest compare is used instead.
