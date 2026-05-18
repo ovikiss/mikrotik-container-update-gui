@@ -319,6 +319,23 @@ class RouterOsClient {
     });
   }
 
+  async setContainerRemoteImage(container, remoteImage) {
+    if (!container?.id) {
+      throw new Error("Missing container id for set remote-image");
+    }
+    if (!remoteImage) {
+      throw new Error("Missing remote-image value");
+    }
+
+    return this.request("/container/set", {
+      method: "POST",
+      body: {
+        [this.targetField]: container.id,
+        "remote-image": String(remoteImage)
+      }
+    });
+  }
+
   async registryFetchJson(url, options = {}) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);

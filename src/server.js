@@ -9,6 +9,7 @@ dotenv.config();
 const app = express();
 const port = Number(process.env.HTTP_PORT || process.env.PORT || 3030);
 const settingsPath = path.join(__dirname, "..", "app", "settings.json");
+const rollbackStatePath = path.join(__dirname, "..", "app", "rollback-state.json");
 const defaultSettings = {
   theme: "auto",
   theme_style: "modern"
@@ -76,6 +77,84 @@ async function writeSettings(partial) {
   await fs.mkdir(path.dirname(settingsPath), { recursive: true });
   await fs.writeFile(settingsPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
   return next;
+}
+
+function normalizeDigest(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+  return raw.startsWith("sha256:") ? raw.slice(7) : raw;
+}
+
+function buildPinnedImageReference(remoteImage, imageId) {
+  const imageRef = String(remoteImage || "").trim();
+  const digest = normalizeDigest(imageId);
+  if (!imageRef || !digest) return "";
+
+  const noDigest = imageRef.split("@")[0];
+  const slashIndex = noDigest.lastIndexOf("/");
+  const colonIndex = noDigest.lastIndexOf(":");
+  const repoWithoutTag = colonIndex > slashIndex ? noDigest.slice(0, colonIndex) : noDigest;
+  if (!repoWithoutTag) return "";
+
+  return `${repoWithoutTag}@sha256:${digest}`;
+}
+
+async function readRollbackState() {
+  try {
+    const raw = await fs.readFile(rollbackStatePath, "utf8");
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      return {};
+    }
+    throw error;
+  }
+}
+
+async function writeRollbackState(nextState) {
+  await fs.mkdir(path.dirname(rollbackStatePath), { recursive: true });
+  await fs.writeFile(rollbackStatePath, `${JSON.stringify(nextState, null, 2)}\n`, "utf8");
+}
+
+async function saveRollbackPoint(container) {
+  const remoteImage = container.raw?.["remote-image"] || container.image || "";
+  const imageId = container.raw?.["image-id"] || "";
+  const pinnedImage = buildPinnedImageReference(remoteImage, imageId);
+  if (!pinnedImage) {
+    return null;
+  }
+
+  const state = await readRollbackState();
+  state[container.name] = {
+    containerId: container.id,
+    containerName: container.name,
+    remoteImage: String(remoteImage),
+    imageId: String(imageId),
+    pinnedImage,
+    savedAt: new Date().toISOString()
+  };
+  await writeRollbackState(state);
+  return state[container.name];
+}
+
+async function runCustomRollback(container) {
+  const state = await readRollbackState();
+  const entry = state[container.name];
+
+  if (!entry?.pinnedImage) {
+    throw new Error("No rollback backup found for this container. Run update first.");
+  }
+
+  await client.setContainerRemoteImage(container, entry.pinnedImage);
+  const updateResult = await client.runContainerAction("update", container);
+
+  return {
+    mode: "custom-digest-rollback",
+    rollbackImage: entry.pinnedImage,
+    backupSavedAt: entry.savedAt || "",
+    updateResult
+  };
 }
 
 function normalizeContainer(raw) {
@@ -218,9 +297,42 @@ app.post("/api/containers/:id/actions/:action", async (req, res, next) => {
 
     let result;
     try {
+      if (action === "update") {
+        await saveRollbackPoint(container);
+      }
       result = await client.runContainerAction(action, container);
     } catch (error) {
       if (isUnsupportedActionError(action, error)) {
+        if (action === "rollback") {
+          try {
+            const customResult = await runCustomRollback(container);
+            res.json({
+              ok: true,
+              action,
+              fallback: true,
+              message: "RouterOS rollback unsupported, used custom digest rollback",
+              container: {
+                id: container.id,
+                name: container.name
+              },
+              result: customResult
+            });
+            return;
+          } catch (fallbackError) {
+            res.status(400).json({
+              ok: false,
+              action,
+              error: fallbackError.message,
+              container: {
+                id: container.id,
+                name: container.name
+              },
+              details: error.details || null
+            });
+            return;
+          }
+        }
+
         res.json({
           ok: true,
           action,
@@ -281,6 +393,9 @@ app.post("/api/containers/actions/:action", async (req, res, next) => {
           continue;
         }
 
+        if (action === "update") {
+          await saveRollbackPoint(container);
+        }
         const result = await client.runContainerAction(action, container);
         results.push({
           ok: true,
@@ -289,6 +404,28 @@ app.post("/api/containers/actions/:action", async (req, res, next) => {
         });
       } catch (error) {
         if (isUnsupportedActionError(action, error)) {
+          if (action === "rollback") {
+            try {
+              const customResult = await runCustomRollback(container);
+              results.push({
+                ok: true,
+                fallback: true,
+                container: { id: container.id, name: container.name },
+                message: "RouterOS rollback unsupported, used custom digest rollback",
+                result: customResult
+              });
+              continue;
+            } catch (fallbackError) {
+              results.push({
+                ok: false,
+                container: { id: container.id, name: container.name },
+                error: fallbackError.message,
+                details: error.details || null
+              });
+              continue;
+            }
+          }
+
           results.push({
             ok: true,
             unsupported: true,
