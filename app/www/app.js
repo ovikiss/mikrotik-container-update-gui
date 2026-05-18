@@ -306,8 +306,12 @@ function renderRows() {
       btn.dataset.staticDisabled = "0";
 
       if (btn.dataset.action === "update") {
-        const allowUpdate = checkState.state === "available";
+        const allowUpdate = checkState.state === "available" && !container.isSelf;
         btn.classList.toggle("hidden", !allowUpdate);
+        if (container.isSelf) {
+          btn.dataset.staticDisabled = "1";
+          btn.title = "Self-update is blocked in GUI to avoid accidental retries.";
+        }
       }
 
       if (btn.dataset.action === "rollback") {
@@ -394,6 +398,12 @@ async function loadContainers() {
 async function runSingleAction(id, action) {
   setBusy(true);
   try {
+    const container = state.containers.find((entry) => entry.id === id);
+    if (action === "update" && container?.isSelf) {
+      appendLog("Self-update is blocked for GUI container. Use RouterOS once, then refresh page.");
+      return;
+    }
+
     appendLog(`Running '${action}' on container ${id}`);
     const body = {};
     if (action === "rollback") {
@@ -428,8 +438,15 @@ async function runBulkAction(action) {
 
   if (action === "update" && selectedIds.length === 0) {
     ids = state.containers
-      .filter((container) => state.checkById[container.id]?.state === "available")
+      .filter((container) => state.checkById[container.id]?.state === "available" && !container.isSelf)
       .map((container) => container.id);
+  }
+
+  if (action === "update" && selectedIds.length > 0) {
+    ids = ids.filter((id) => {
+      const container = state.containers.find((entry) => entry.id === id);
+      return !container?.isSelf;
+    });
   }
 
   if (action === "update" && ids.length === 0) {

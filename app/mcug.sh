@@ -643,6 +643,13 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+class ApiUserError(Exception):
+    def __init__(self, message: str, status: int = 400, details: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.status = int(status)
+        self.details = details or None
+
+
 HTTP_PORT = int(os.getenv("HTTP_PORT") or os.getenv("PORT") or "3030")
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.getenv("DATA_DIR") or (BASE_DIR / "app"))
@@ -654,6 +661,9 @@ DEFAULT_SETTINGS = {
     "theme": "auto",
     "theme_style": "modern",
 }
+
+SELF_CONTAINER_NAME = str(os.getenv("SELF_CONTAINER_NAME") or "container-update-gui").strip().lower()
+SELF_IMAGE_HINT = str(os.getenv("SELF_IMAGE_HINT") or "mikrotik-container-update-gui").strip().lower()
 
 CLIENT = RouterOsClient(
     {
@@ -854,6 +864,16 @@ def normalize_container(raw: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def is_self_container(container: Dict[str, Any]) -> bool:
+    name = str(container.get("name") or "").strip().lower()
+    image = str(container.get("image") or "").strip().lower()
+    if SELF_CONTAINER_NAME and name == SELF_CONTAINER_NAME:
+        return True
+    if SELF_IMAGE_HINT and SELF_IMAGE_HINT in image:
+        return True
+    return False
+
+
 def action_from_param(value: str) -> Optional[str]:
     action = str(value or "").lower()
     if action in ("check", "backup", "update", "rollback"):
@@ -863,6 +883,8 @@ def action_from_param(value: str) -> Optional[str]:
 
 def fetch_normalized_containers() -> List[Dict[str, Any]]:
     containers = [normalize_container(item) for item in CLIENT.list_containers()]
+    for container in containers:
+        container["isSelf"] = is_self_container(container)
     return sorted(containers, key=lambda item: item["name"])
 
 
@@ -1002,6 +1024,12 @@ def run_single_action(action: str, container: Dict[str, Any], payload: Optional[
             "container": {"id": container["id"], "name": container["name"]},
             "result": run_version_rollback(container, target_image_ref),
         }
+
+    if action == "update" and bool(container.get("isSelf")):
+        raise ApiUserError(
+            "Self-update blocked for this GUI container. Update it once from RouterOS, then refresh the page.",
+            status=409,
+        )
 
     result = CLIENT.run_container_action(action, container)
     response_payload: Dict[str, Any] = {
@@ -1173,6 +1201,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404, "Not Found")
         except json.JSONDecodeError:
             json_response(self, 400, {"ok": False, "error": "Invalid JSON payload"})
+        except ApiUserError as error:
+            json_response(self, error.status, {"ok": False, "error": str(error), "details": error.details})
         except RouterOsRequestError as error:
             json_response(self, 502, {"ok": False, "error": str(error), "details": error.details or None})
         except Exception as error:
