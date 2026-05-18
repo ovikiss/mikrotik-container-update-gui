@@ -470,14 +470,42 @@ class RouterOsClient:
         if not base_image:
             raise ValueError("Could not resolve repository for rollback versions")
 
-        tags_url = f"https://{parsed['registry']}/v2/{parsed['repository']}/tags/list?n=200"
-        tags_result = self.fetch_registry_json_with_auth(tags_url, accept_header="application/json")
-        if not tags_result["ok"]:
-            raise ValueError(f"Tags request failed with HTTP {tags_result['status']}")
+        chosen = []
+        seen = set()
 
-        tags_data = tags_result.get("data") if isinstance(tags_result.get("data"), dict) else {}
-        tags_raw = tags_data.get("tags")
-        tags: List[str] = [str(tag) for tag in tags_raw] if isinstance(tags_raw, list) else []
+        def add_tag(tag: str, source: str) -> None:
+            clean_tag = str(tag or "").strip()
+            if not clean_tag:
+                return
+            if clean_tag.startswith("sha256:"):
+                return
+            if clean_tag in seen:
+                return
+            chosen.append(
+                {
+                    "tag": clean_tag,
+                    "label": f"{clean_tag} ({source})",
+                    "imageRef": f"{base_image}:{clean_tag}",
+                }
+            )
+            seen.add(clean_tag)
+
+        current_ref = str(parsed.get("reference") or "")
+        if current_ref and not current_ref.startswith("sha256:"):
+            add_tag(current_ref, "current")
+        add_tag("latest", "latest")
+        add_tag("stable", "stable")
+
+        tags: List[str] = []
+        try:
+            tags_url = f"https://{parsed['registry']}/v2/{parsed['repository']}/tags/list?n=200"
+            tags_result = self.fetch_registry_json_with_auth(tags_url, accept_header="application/json")
+            if tags_result["ok"]:
+                tags_data = tags_result.get("data") if isinstance(tags_result.get("data"), dict) else {}
+                tags_raw = tags_data.get("tags")
+                tags = [str(tag) for tag in tags_raw] if isinstance(tags_raw, list) else []
+        except Exception:
+            tags = []
 
         semver_tags = []
         for tag in tags:
@@ -487,24 +515,19 @@ class RouterOsClient:
             semver_tags.append((parsed_semver, tag))
         semver_tags.sort(key=lambda item: item[0], reverse=True)
 
-        chosen = []
-        seen = set()
+        if semver_tags:
+            for _, tag in semver_tags[: max(0, int(max_semver))]:
+                add_tag(tag, "v*")
+        else:
+            preferred_fallback_tags = ["stable", "latest", "beta", "edge", "dev", "nightly"]
+            for tag in preferred_fallback_tags:
+                if tag in tags:
+                    add_tag(tag, "tag")
 
-        def add_tag(tag: str, source: str) -> None:
-            if tag in seen:
-                return
-            chosen.append(
-                {
-                    "tag": tag,
-                    "label": f"{tag} ({source})",
-                    "imageRef": f"{base_image}:{tag}",
-                }
-            )
-            seen.add(tag)
-
-        add_tag("latest", "latest")
-        for _, tag in semver_tags[: max(0, int(max_semver))]:
-            add_tag(tag, "v*")
+            generic_tags = [tag for tag in tags if tag not in seen]
+            generic_tags.sort(reverse=True)
+            for tag in generic_tags[: max(0, int(max_semver))]:
+                add_tag(tag, "tag")
 
         return chosen
 
