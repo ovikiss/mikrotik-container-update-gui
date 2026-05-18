@@ -961,24 +961,43 @@ def run_version_rollback(container: Dict[str, Any], target_image_ref: str) -> Di
         raise ValueError("Missing rollback target image. Run check and pick a version from dropdown.")
 
     raw = container.get("raw") if isinstance(container.get("raw"), dict) else {}
-    previous_image = str(raw.get("remote-image") or container.get("image") or "")
+    previous_image = str(raw.get("remote-image") or container.get("image") or "").strip()
+    preferred_architecture = str(raw.get("arch") or "")
+    tracking_image = previous_image
 
-    if previous_image == target:
+    rollback_ref = CLIENT.resolve_rollback_image_reference(target, preferred_architecture)
+    pinned_target = str(rollback_ref.get("pinnedImage") or "").strip() or target
+
+    if previous_image == pinned_target or previous_image == target:
         return {
             "mode": "version-rollback",
             "noop": True,
             "message": "Container already uses selected rollback image.",
             "rollbackImage": target,
+            "rollbackPinnedImage": pinned_target,
             "previousImage": previous_image,
         }
 
-    CLIENT.set_container_remote_image(container, target)
+    CLIENT.set_container_remote_image(container, pinned_target)
     try:
         update_result = CLIENT.run_container_action("update", container)
+        tracking_restore_error = ""
+        tracking_restored = False
+        if tracking_image and tracking_image != pinned_target:
+            try:
+                CLIENT.set_container_remote_image(container, tracking_image)
+                tracking_restored = True
+            except Exception as restore_tag_error:
+                tracking_restore_error = str(restore_tag_error)
+
         return {
             "mode": "version-rollback",
             "rollbackImage": target,
+            "rollbackPinnedImage": pinned_target,
             "previousImage": previous_image,
+            "trackingImage": tracking_image,
+            "trackingImageRestored": tracking_restored,
+            "trackingImageRestoreError": tracking_restore_error or None,
             "updateResult": update_result,
         }
     except Exception as rollback_error:
@@ -998,6 +1017,7 @@ def run_version_rollback(container: Dict[str, Any], target_image_ref: str) -> Di
         )
         friendly.details = {
             "rollbackImage": target,
+            "rollbackPinnedImage": pinned_target,
             "previousImage": previous_image,
             "rollbackError": str(rollback_error),
             "restored": bool(restore_result),
