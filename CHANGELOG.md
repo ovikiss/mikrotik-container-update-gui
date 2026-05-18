@@ -3,7 +3,7 @@
 ## v0.3 - 2026-05-18
 
 - Runtime migrated from Node.js to Python for lower container footprint.
-- Added `/app/mcug.sh` entrypoint flow (traffic-monitor style).
+- Runtime packaged traffic-monitor style in a single `/app/mcug.sh` script (Python embedded, no `.py` files in repo).
 - Added compatibility shim for existing RouterOS configs that still start with `node src/server.js`.
 - Cleaned up README structure and deployment notes.
 - Internal container port aligned with env-driven port (`HTTP_PORT`, image default `8090`).

@@ -56,3 +56,4 @@ Default local:
 - Portul intern al imaginii este același cu `HTTP_PORT` din env (deploy default: `8090`).
 - `ROUTEROS_BASE_URL` este opțional; dacă lipsește, se auto-detectează gateway-ul.
 - Starea persistentă (`settings.json`, `rollback-state.json`) este în `/data`.
+- Runtime-ul rulează dintr-un singur script: `/app/mcug.sh` (fără fișiere `.py` în repo).
