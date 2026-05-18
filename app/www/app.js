@@ -3,6 +3,7 @@ const state = {
   busy: false,
   checkById: {},
   updateLockedById: {},
+  rollbackLockedById: {},
   rollbackOptionsById: {},
   rollbackTargetById: {},
   theme: "auto",
@@ -319,6 +320,14 @@ function renderRows() {
       }
 
       if (btn.dataset.action === "rollback") {
+        const rollbackLocked = Boolean(state.rollbackLockedById[container.id]);
+        btn.classList.toggle("hidden", rollbackLocked);
+        if (rollbackLocked) {
+          btn.dataset.staticDisabled = "1";
+          btn.title = "Rollback already sent once. Run check again before retrying.";
+          return;
+        }
+
         const rollbackReady = Boolean(state.rollbackTargetById[container.id]);
         btn.dataset.staticDisabled = rollbackReady ? "0" : "1";
         btn.title = rollbackReady
@@ -355,6 +364,7 @@ function digestCheckToUiState(result) {
 function applyCheckResult(containerId, result) {
   state.checkById[containerId] = digestCheckToUiState(result);
   delete state.updateLockedById[containerId];
+  delete state.rollbackLockedById[containerId];
   const options = Array.isArray(result?.rollbackOptions) ? result.rollbackOptions : [];
   state.rollbackOptionsById[containerId] = options;
   if (!options.some((option) => option.imageRef === state.rollbackTargetById[containerId])) {
@@ -392,6 +402,9 @@ async function loadContainers() {
     Object.keys(state.updateLockedById).forEach((id) => {
       if (!validIds.has(id)) delete state.updateLockedById[id];
     });
+    Object.keys(state.rollbackLockedById).forEach((id) => {
+      if (!validIds.has(id)) delete state.rollbackLockedById[id];
+    });
     renderRows();
     els.countLabel.textContent = `Containers: ${health.containerCount}`;
     appendLog(`Loaded ${health.containerCount} containers`);
@@ -408,6 +421,10 @@ async function runSingleAction(id, action) {
   try {
     if (action === "update") {
       state.updateLockedById[id] = true;
+      renderRows();
+    }
+    if (action === "rollback") {
+      state.rollbackLockedById[id] = true;
       renderRows();
     }
 
@@ -470,6 +487,12 @@ async function runBulkAction(action) {
     if (action === "update") {
       ids.forEach((containerId) => {
         state.updateLockedById[containerId] = true;
+      });
+      renderRows();
+    }
+    if (action === "rollback") {
+      ids.forEach((containerId) => {
+        state.rollbackLockedById[containerId] = true;
       });
       renderRows();
     }
