@@ -10,8 +10,8 @@ COPY src ./src
 COPY app ./app
 
 ENV NODE_ENV=production
-ENV PORT=3030
+ENV HTTP_PORT=8090
 
-EXPOSE 3030
+EXPOSE 8090
 
 CMD ["node", "src/server.js"]

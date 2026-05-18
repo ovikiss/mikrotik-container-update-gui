@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.3 - 2026-05-18
+
+- Cleaned up README structure and deployment notes.
+- Internal container port aligned with env-driven port (`HTTP_PORT`, image default `8090`).
+- Added `DATA_DIR` to `.env.example`.
+- Rollback hardening:
+  - If rollback target digest is already running, action is skipped (`no-op`) to avoid RouterOS `skip importing same version` breakage.
+  - Prevents accidental container corruption on immediate `backup -> rollback` with no update in between.
+
 ## v0.2 - 2026-05-18
 
 - UI update aligned with `mikrotik-traffic-monitor` look and controls.
