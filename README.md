@@ -2,6 +2,8 @@
 
 Minimal web UI (Dockhand-style) for MikroTik RouterOS containers.
 
+Current release: `v0.2` (see `CHANGELOG.md`).
+
 What it does:
 - Lists all containers dynamically from RouterOS REST API.
 - Works automatically with new containers added later.

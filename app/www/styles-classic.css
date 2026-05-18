@@ -1,0 +1,37 @@
+@import url("/styles-modern.css");
+
+:root {
+  --panel: #f2f7ff;
+  --panel-strong: #e9f2ff;
+  --line: #d6deef;
+  --ink: #1a2648;
+  --muted: #536081;
+  --table-head: #e1edff;
+  --table-border: #bfd4f6;
+  --glass-blur: none;
+  --glass-shadow: none;
+  --glass-inset: none;
+}
+
+html[data-theme="dark"] {
+  --panel: #2d3a4d;
+  --panel-strong: #2d3a4d;
+  --line: #586d89;
+  --ink: #e8eff8;
+  --muted: #aabacd;
+  --table-head: #32425c;
+  --table-border: #566c8b;
+}
+
+body {
+  background: var(--bg);
+}
+
+.panel {
+  border-radius: 10px;
+}
+
+.btn {
+  background: var(--blue);
+  border-radius: 9px;
+}

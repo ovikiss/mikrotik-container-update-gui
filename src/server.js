@@ -33,17 +33,27 @@ const client = new RouterOsClient({
 });
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "..", "public")));
+app.use(express.static(path.join(__dirname, "..", "app", "www")));
 
 function normalizeContainer(raw) {
   const id = raw[".id"] || raw.id || raw.number || raw.numbers || "";
   const name = raw.name || raw.comment || raw["remote-image"] || String(id);
   const image = raw["remote-image"] || raw.image || raw.file || "";
+  const runningRaw = String(raw.running || "").toLowerCase();
+
+  let status = "unknown";
+  if (raw.status) {
+    status = String(raw.status);
+  } else if (["true", "1", "yes"].includes(runningRaw)) {
+    status = "running";
+  } else if (["false", "0", "no"].includes(runningRaw)) {
+    status = "stopped";
+  }
 
   return {
     id: String(id),
     name: String(name),
-    status: String(raw.status || "unknown"),
+    status,
     image: String(image),
     created: String(raw.created || ""),
     raw

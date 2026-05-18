@@ -1,11 +1,24 @@
 const state = {
   containers: [],
   busy: false,
-  checkById: {}
+  checkById: {},
+  theme: "light",
+  themeStyle: "modern"
 };
 
 const els = {
   refreshBtn: document.getElementById("refreshBtn"),
+  themeStyleCss: document.getElementById("themeStyleCss"),
+  themeToggle: document.getElementById("themeToggle"),
+  themeMenu: document.getElementById("themeMenu"),
+  themeCurrentLabel: document.getElementById("themeCurrentLabel"),
+  themeSelect: document.getElementById("themeSelect"),
+  themeDropdown: document.getElementById("themeDropdown"),
+  themeStyleToggle: document.getElementById("themeStyleToggle"),
+  themeStyleMenu: document.getElementById("themeStyleMenu"),
+  themeStyleCurrentLabel: document.getElementById("themeStyleCurrentLabel"),
+  themeStyleSelect: document.getElementById("themeStyleSelect"),
+  themeStyleDropdown: document.getElementById("themeStyleDropdown"),
   selectAll: document.getElementById("selectAll"),
   containersBody: document.getElementById("containersBody"),
   rowTemplate: document.getElementById("rowTemplate"),
@@ -14,6 +27,111 @@ const els = {
   countLabel: document.getElementById("countLabel"),
   bulkButtons: Array.from(document.querySelectorAll("[data-bulk-action]"))
 };
+
+const THEME_ITEMS = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" }
+];
+
+const THEME_STYLE_ITEMS = [
+  { value: "modern", label: "Modern" },
+  { value: "classic", label: "Classic" }
+];
+
+function closeThemeMenu() {
+  els.themeMenu.classList.remove("open");
+  els.themeToggle.setAttribute("aria-expanded", "false");
+}
+
+function closeThemeStyleMenu() {
+  els.themeStyleMenu.classList.remove("open");
+  els.themeStyleToggle.setAttribute("aria-expanded", "false");
+}
+
+function updateThemeButton() {
+  const picked = THEME_ITEMS.find((item) => item.value === state.theme) || THEME_ITEMS[0];
+  els.themeCurrentLabel.textContent = picked.label;
+}
+
+function updateThemeStyleButton() {
+  const picked = THEME_STYLE_ITEMS.find((item) => item.value === state.themeStyle) || THEME_STYLE_ITEMS[0];
+  els.themeStyleCurrentLabel.textContent = picked.label;
+}
+
+function applyTheme() {
+  document.documentElement.setAttribute("data-theme", state.theme);
+  els.themeSelect.value = state.theme;
+  updateThemeButton();
+}
+
+function applyThemeStyle() {
+  document.documentElement.setAttribute("data-theme-style", state.themeStyle);
+  els.themeStyleCss.setAttribute(
+    "href",
+    state.themeStyle === "classic" ? "/styles-classic.css" : "/styles-modern.css"
+  );
+  els.themeStyleSelect.value = state.themeStyle;
+  updateThemeStyleButton();
+}
+
+function setTheme(value) {
+  state.theme = value === "dark" ? "dark" : "light";
+  localStorage.setItem("mcug_theme", state.theme);
+  applyTheme();
+}
+
+function setThemeStyle(value) {
+  state.themeStyle = value === "classic" ? "classic" : "modern";
+  localStorage.setItem("mcug_theme_style", state.themeStyle);
+  applyThemeStyle();
+}
+
+function renderThemeMenu() {
+  els.themeMenu.innerHTML = "";
+  THEME_ITEMS.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "theme-item";
+    button.setAttribute("role", "option");
+    button.textContent = item.label;
+    button.addEventListener("click", () => {
+      closeThemeMenu();
+      setTheme(item.value);
+    });
+    els.themeMenu.appendChild(button);
+  });
+  updateThemeButton();
+}
+
+function renderThemeStyleMenu() {
+  els.themeStyleMenu.innerHTML = "";
+  THEME_STYLE_ITEMS.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "theme-item";
+    button.setAttribute("role", "option");
+    button.textContent = item.label;
+    button.addEventListener("click", () => {
+      closeThemeStyleMenu();
+      setThemeStyle(item.value);
+    });
+    els.themeStyleMenu.appendChild(button);
+  });
+  updateThemeStyleButton();
+}
+
+function initAppearance() {
+  const savedTheme = localStorage.getItem("mcug_theme");
+  const savedStyle = localStorage.getItem("mcug_theme_style");
+
+  state.theme = savedTheme === "dark" ? "dark" : "light";
+  state.themeStyle = savedStyle === "classic" ? "classic" : "modern";
+
+  applyThemeStyle();
+  applyTheme();
+  renderThemeStyleMenu();
+  renderThemeMenu();
+}
 
 function nowLabel() {
   return new Date().toLocaleTimeString();
@@ -241,6 +359,32 @@ async function runBulkAction(action) {
 }
 
 els.refreshBtn.addEventListener("click", loadContainers);
+
+els.themeToggle.addEventListener("click", () => {
+  const open = els.themeMenu.classList.toggle("open");
+  els.themeToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    closeThemeStyleMenu();
+  }
+});
+
+els.themeStyleToggle.addEventListener("click", () => {
+  const open = els.themeStyleMenu.classList.toggle("open");
+  els.themeStyleToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    closeThemeMenu();
+  }
+});
+
+document.addEventListener("click", (event) => {
+  if (!els.themeDropdown.contains(event.target)) {
+    closeThemeMenu();
+  }
+  if (!els.themeStyleDropdown.contains(event.target)) {
+    closeThemeStyleMenu();
+  }
+});
+
 els.selectAll.addEventListener("change", (event) => {
   const checked = event.target.checked;
   els.containersBody.querySelectorAll(".row-select").forEach((input) => {
@@ -252,4 +396,5 @@ els.bulkButtons.forEach((btn) => {
   btn.addEventListener("click", () => runBulkAction(btn.dataset.bulkAction));
 });
 
+initAppearance();
 loadContainers();
