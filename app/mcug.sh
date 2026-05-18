@@ -1092,12 +1092,6 @@ def run_single_action(action: str, container: Dict[str, Any], payload: Optional[
             "result": run_version_rollback(container, target_image_ref),
         }
 
-    if action == "update" and bool(container.get("isSelf")):
-        raise ApiUserError(
-            "Self-update blocked for this GUI container. Update it once from RouterOS, then refresh the page.",
-            status=409,
-        )
-
     result = CLIENT.run_container_action(action, container)
     response_payload: Dict[str, Any] = {
         "ok": True,

@@ -2,6 +2,7 @@ const state = {
   containers: [],
   busy: false,
   checkById: {},
+  updateLockedById: {},
   rollbackOptionsById: {},
   rollbackTargetById: {},
   theme: "auto",
@@ -306,11 +307,14 @@ function renderRows() {
       btn.dataset.staticDisabled = "0";
 
       if (btn.dataset.action === "update") {
-        const allowUpdate = checkState.state === "available" && !container.isSelf;
+        const updateLocked = Boolean(state.updateLockedById[container.id]);
+        const allowUpdate = checkState.state === "available" && !updateLocked;
         btn.classList.toggle("hidden", !allowUpdate);
-        if (container.isSelf) {
+        if (updateLocked) {
           btn.dataset.staticDisabled = "1";
-          btn.title = "Self-update is blocked in GUI to avoid accidental retries.";
+          btn.title = "Update already sent once. Run check again before retrying.";
+        } else {
+          btn.title = "";
         }
       }
 
@@ -350,6 +354,7 @@ function digestCheckToUiState(result) {
 
 function applyCheckResult(containerId, result) {
   state.checkById[containerId] = digestCheckToUiState(result);
+  delete state.updateLockedById[containerId];
   const options = Array.isArray(result?.rollbackOptions) ? result.rollbackOptions : [];
   state.rollbackOptionsById[containerId] = options;
   if (!options.some((option) => option.imageRef === state.rollbackTargetById[containerId])) {
@@ -384,6 +389,9 @@ async function loadContainers() {
     Object.keys(state.rollbackTargetById).forEach((id) => {
       if (!validIds.has(id)) delete state.rollbackTargetById[id];
     });
+    Object.keys(state.updateLockedById).forEach((id) => {
+      if (!validIds.has(id)) delete state.updateLockedById[id];
+    });
     renderRows();
     els.countLabel.textContent = `Containers: ${health.containerCount}`;
     appendLog(`Loaded ${health.containerCount} containers`);
@@ -398,10 +406,9 @@ async function loadContainers() {
 async function runSingleAction(id, action) {
   setBusy(true);
   try {
-    const container = state.containers.find((entry) => entry.id === id);
-    if (action === "update" && container?.isSelf) {
-      appendLog("Self-update is blocked for GUI container. Use RouterOS once, then refresh page.");
-      return;
+    if (action === "update") {
+      state.updateLockedById[id] = true;
+      renderRows();
     }
 
     appendLog(`Running '${action}' on container ${id}`);
@@ -438,15 +445,8 @@ async function runBulkAction(action) {
 
   if (action === "update" && selectedIds.length === 0) {
     ids = state.containers
-      .filter((container) => state.checkById[container.id]?.state === "available" && !container.isSelf)
+      .filter((container) => state.checkById[container.id]?.state === "available" && !state.updateLockedById[container.id])
       .map((container) => container.id);
-  }
-
-  if (action === "update" && selectedIds.length > 0) {
-    ids = ids.filter((id) => {
-      const container = state.containers.find((entry) => entry.id === id);
-      return !container?.isSelf;
-    });
   }
 
   if (action === "update" && ids.length === 0) {
@@ -467,6 +467,13 @@ async function runBulkAction(action) {
 
   setBusy(true);
   try {
+    if (action === "update") {
+      ids.forEach((containerId) => {
+        state.updateLockedById[containerId] = true;
+      });
+      renderRows();
+    }
+
     appendLog(`Running bulk '${action}' on ${scopeLabel}`);
     const rollbackTargets = {};
     if (action === "rollback") {
