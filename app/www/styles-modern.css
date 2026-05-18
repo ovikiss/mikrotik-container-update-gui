@@ -409,6 +409,8 @@ th {
   font-size: 0.75rem;
   background: var(--table-head);
   color: var(--ink);
+  white-space: nowrap;
+  min-width: max-content;
 }
 
 .update-pill.available {

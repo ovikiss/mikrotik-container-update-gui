@@ -40,3 +40,8 @@ body::before {
 .btn {
   border-radius: 9px;
 }
+
+.update-pill {
+  white-space: nowrap;
+  min-width: max-content;
+}

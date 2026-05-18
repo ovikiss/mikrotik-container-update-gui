@@ -464,37 +464,35 @@ class RouterOsClient:
             raise ValueError(f"Registry request failed with HTTP {manifest_try['status']}")
         return manifest_try
 
-    def list_rollback_versions(self, image_ref: str, max_semver: int = 3) -> List[Dict[str, str]]:
+    def list_rollback_versions(
+        self,
+        image_ref: str,
+        max_semver: int = 3,
+        preferred_architecture: str = "",
+    ) -> List[Dict[str, str]]:
         parsed = parse_image_reference(image_ref)
         base_image = strip_image_tag_and_digest(parsed["original"])
         if not base_image:
             raise ValueError("Could not resolve repository for rollback versions")
 
-        chosen = []
-        seen = set()
+        candidate_tags: List[str] = []
+        seen_candidates = set()
 
-        def add_tag(tag: str) -> None:
+        def add_candidate(tag: str) -> None:
             clean_tag = str(tag or "").strip()
             if not clean_tag:
                 return
             if clean_tag.startswith("sha256:"):
                 return
-            if clean_tag in seen:
+            if clean_tag in seen_candidates:
                 return
-            chosen.append(
-                {
-                    "tag": clean_tag,
-                    "label": clean_tag,
-                    "imageRef": f"{base_image}:{clean_tag}",
-                }
-            )
-            seen.add(clean_tag)
+            candidate_tags.append(clean_tag)
+            seen_candidates.add(clean_tag)
 
         current_ref = str(parsed.get("reference") or "")
+        anchor_tag = ""
         if current_ref and not current_ref.startswith("sha256:"):
-            if parse_semver_tag(current_ref) is not None:
-                add_tag(current_ref)
-        add_tag("latest")
+            anchor_tag = current_ref
 
         tags: List[str] = []
         try:
@@ -515,11 +513,45 @@ class RouterOsClient:
             semver_tags.append((parsed_semver, tag))
         semver_tags.sort(key=lambda item: item[0], reverse=True)
 
-        if semver_tags:
-            for _, tag in semver_tags[: max(0, int(max_semver))]:
-                add_tag(tag)
+        if anchor_tag in ("stable", "latest"):
+            add_candidate(anchor_tag)
+        elif anchor_tag:
+            # For non-standard anchors (e.g. beta), keep current tag first.
+            add_candidate(anchor_tag)
 
-        return chosen
+        for _, tag in semver_tags[: max(0, int(max_semver))]:
+            add_candidate(tag)
+
+        verified: List[Dict[str, str]] = []
+        for tag in candidate_tags:
+            image_candidate = f"{base_image}:{tag}"
+            try:
+                # Ensure the tag resolves to a manifest pullable for current container architecture.
+                self.resolve_rollback_image_reference(image_candidate, preferred_architecture)
+            except Exception:
+                continue
+            verified.append(
+                {
+                    "tag": tag,
+                    "label": tag,
+                    "imageRef": image_candidate,
+                }
+            )
+
+        if verified:
+            return verified
+
+        # Final fallback: show current tag even when verification fails due transient networking.
+        if current_ref and not current_ref.startswith("sha256:"):
+            return [
+                {
+                    "tag": current_ref,
+                    "label": current_ref,
+                    "imageRef": f"{base_image}:{current_ref}",
+                }
+            ]
+
+        return []
 
     def resolve_remote_config_digest(self, image_ref: str, preferred_architecture: str = "") -> Dict[str, str]:
         parsed = parse_image_reference(image_ref)
@@ -591,7 +623,11 @@ class RouterOsClient:
         rollback_warning = ""
 
         try:
-            rollback_options = self.list_rollback_versions(str(remote_image_ref or ""), max_semver=3)
+            rollback_options = self.list_rollback_versions(
+                str(remote_image_ref or ""),
+                max_semver=3,
+                preferred_architecture=str(raw.get("arch") or ""),
+            )
         except Exception as error:
             rollback_warning = f"Rollback versions unavailable: {error}"
 
