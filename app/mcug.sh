@@ -203,6 +203,17 @@ def parse_bearer_challenge(header_value: Optional[str]) -> Optional[Dict[str, st
     return params
 
 
+def parse_semver_tag(tag: str) -> Optional[tuple]:
+    match = re.fullmatch(r"v(\d+)\.(\d+)(?:\.(\d+))?", str(tag or "").strip())
+    if not match:
+        return None
+    major = int(match.group(1))
+    minor = int(match.group(2))
+    patch = int(match.group(3) or "0")
+    has_patch = 1 if match.group(3) is not None else 0
+    return (major, minor, patch, has_patch)
+
+
 class RouterOsClient:
     def __init__(self, config: Dict[str, Any]):
         self.base_url = resolve_base_url(config.get("baseUrl"))
@@ -234,12 +245,6 @@ class RouterOsClient:
                 "pathTemplate": config.get("updatePath") or "/container/update",
                 "sendTarget": bool_from_env(config.get("updateSendTarget"), True),
                 "bodyTemplate": parse_json_env(config.get("updateBodyJson"), {}),
-            },
-            "rollback": {
-                "method": str(config.get("rollbackMethod") or "POST").upper(),
-                "pathTemplate": config.get("rollbackPath") or "/container/rollback",
-                "sendTarget": bool_from_env(config.get("rollbackSendTarget"), True),
-                "bodyTemplate": parse_json_env(config.get("rollbackBodyJson"), {}),
             },
         }
 
@@ -398,16 +403,7 @@ class RouterOsClient:
             verify_tls=True,
         )
 
-    def fetch_registry_manifest_with_auth(self, registry_url: str) -> Dict[str, Any]:
-        accept_header = ", ".join(
-            [
-                "application/vnd.oci.image.manifest.v1+json",
-                "application/vnd.docker.distribution.manifest.v2+json",
-                "application/vnd.oci.image.index.v1+json",
-                "application/vnd.docker.distribution.manifest.list.v2+json",
-            ]
-        )
-
+    def fetch_registry_json_with_auth(self, registry_url: str, accept_header: str = "application/json") -> Dict[str, Any]:
         first_try = self.registry_fetch_json(registry_url, headers={"Accept": accept_header})
         first_response = first_try
 
@@ -448,16 +444,69 @@ class RouterOsClient:
         if not bearer_token:
             raise ValueError("Registry token response did not include a bearer token")
 
-        second_try = self.registry_fetch_json(
+        return self.registry_fetch_json(
             registry_url,
             headers={"Accept": accept_header, "Authorization": f"Bearer {bearer_token}"},
         )
-        second_response = second_try
 
-        if not second_response["ok"]:
-            raise ValueError(f"Registry request failed with HTTP {second_response['status']}")
+    def fetch_registry_manifest_with_auth(self, registry_url: str) -> Dict[str, Any]:
+        accept_header = ", ".join(
+            [
+                "application/vnd.oci.image.manifest.v1+json",
+                "application/vnd.docker.distribution.manifest.v2+json",
+                "application/vnd.oci.image.index.v1+json",
+                "application/vnd.docker.distribution.manifest.list.v2+json",
+            ]
+        )
 
-        return second_try
+        manifest_try = self.fetch_registry_json_with_auth(registry_url, accept_header=accept_header)
+        if not manifest_try["ok"]:
+            raise ValueError(f"Registry request failed with HTTP {manifest_try['status']}")
+        return manifest_try
+
+    def list_rollback_versions(self, image_ref: str, max_semver: int = 3) -> List[Dict[str, str]]:
+        parsed = parse_image_reference(image_ref)
+        base_image = strip_image_tag_and_digest(parsed["original"])
+        if not base_image:
+            raise ValueError("Could not resolve repository for rollback versions")
+
+        tags_url = f"https://{parsed['registry']}/v2/{parsed['repository']}/tags/list?n=200"
+        tags_result = self.fetch_registry_json_with_auth(tags_url, accept_header="application/json")
+        if not tags_result["ok"]:
+            raise ValueError(f"Tags request failed with HTTP {tags_result['status']}")
+
+        tags_data = tags_result.get("data") if isinstance(tags_result.get("data"), dict) else {}
+        tags_raw = tags_data.get("tags")
+        tags: List[str] = [str(tag) for tag in tags_raw] if isinstance(tags_raw, list) else []
+
+        semver_tags = []
+        for tag in tags:
+            parsed_semver = parse_semver_tag(tag)
+            if parsed_semver is None:
+                continue
+            semver_tags.append((parsed_semver, tag))
+        semver_tags.sort(key=lambda item: item[0], reverse=True)
+
+        chosen = []
+        seen = set()
+
+        def add_tag(tag: str, source: str) -> None:
+            if tag in seen:
+                return
+            chosen.append(
+                {
+                    "tag": tag,
+                    "label": f"{tag} ({source})",
+                    "imageRef": f"{base_image}:{tag}",
+                }
+            )
+            seen.add(tag)
+
+        add_tag("latest", "latest")
+        for _, tag in semver_tags[: max(0, int(max_semver))]:
+            add_tag(tag, "v*")
+
+        return chosen
 
     def resolve_remote_config_digest(self, image_ref: str, preferred_architecture: str = "") -> Dict[str, str]:
         parsed = parse_image_reference(image_ref)
@@ -525,6 +574,13 @@ class RouterOsClient:
         local_image_id = str(raw.get("image-id") or "")
         normalized_local_image_id = normalize_digest(local_image_id)
         remote_image_ref = raw.get("remote-image") or container.get("image")
+        rollback_options: List[Dict[str, str]] = []
+        rollback_warning = ""
+
+        try:
+            rollback_options = self.list_rollback_versions(str(remote_image_ref or ""), max_semver=3)
+        except Exception as error:
+            rollback_warning = f"Rollback versions unavailable: {error}"
 
         try:
             remote = self.resolve_remote_config_digest(str(remote_image_ref or ""), str(raw.get("arch") or ""))
@@ -532,21 +588,29 @@ class RouterOsClient:
             up_to_date = bool(
                 normalized_local_image_id and remote_normalized and normalized_local_image_id == remote_normalized
             )
-            return {
+            result = {
                 "mode": "digest-compare",
                 "upToDate": up_to_date,
                 "localImageId": local_image_id,
                 "remoteConfigDigest": remote.get("remoteConfigDigest"),
                 "imageRef": remote.get("imageRef"),
+                "rollbackOptions": rollback_options,
             }
+            if rollback_warning:
+                result["rollbackWarning"] = rollback_warning
+            return result
         except Exception as error:
-            return {
+            result = {
                 "mode": "digest-compare",
                 "upToDate": None,
                 "localImageId": local_image_id,
                 "imageRef": str(remote_image_ref or ""),
                 "warning": f"Digest check unavailable: {error}",
+                "rollbackOptions": rollback_options,
             }
+            if rollback_warning:
+                result["rollbackWarning"] = rollback_warning
+            return result
 PY_ROUTEROS
 
 cat >/tmp/server.py <<'PY_SERVER'
@@ -595,10 +659,6 @@ CLIENT = RouterOsClient(
         "updateMethod": os.getenv("ROUTEROS_UPDATE_METHOD"),
         "updateSendTarget": os.getenv("ROUTEROS_UPDATE_SEND_TARGET"),
         "updateBodyJson": os.getenv("ROUTEROS_UPDATE_BODY_JSON"),
-        "rollbackPath": os.getenv("ROUTEROS_ROLLBACK_PATH"),
-        "rollbackMethod": os.getenv("ROUTEROS_ROLLBACK_METHOD"),
-        "rollbackSendTarget": os.getenv("ROUTEROS_ROLLBACK_SEND_TARGET"),
-        "rollbackBodyJson": os.getenv("ROUTEROS_ROLLBACK_BODY_JSON"),
     }
 )
 
@@ -788,56 +848,37 @@ def action_from_param(value: str) -> Optional[str]:
     return None
 
 
-def is_unsupported_action_error(action: str, error: Exception) -> bool:
-    if not isinstance(error, RouterOsRequestError):
-        return False
-    if action != "rollback":
-        return False
-    detail = str((error.details or {}).get("data", {}).get("detail", "")).lower()
-    return "no such command" in detail
-
-
 def fetch_normalized_containers() -> List[Dict[str, Any]]:
     containers = [normalize_container(item) for item in CLIENT.list_containers()]
-    rollback_state = read_rollback_state()
-    merged: List[Dict[str, Any]] = []
-    for container in containers:
-        has_backup = bool(get_rollback_candidate_from_entry(rollback_state.get(container["name"])))
-        merged.append({**container, "hasRollbackBackup": has_backup})
-    return sorted(merged, key=lambda item: item["name"])
+    return sorted(containers, key=lambda item: item["name"])
 
 
-def run_custom_rollback(container: Dict[str, Any]) -> Dict[str, Any]:
-    state = read_rollback_state()
-    entry = state.get(container["name"])
-    candidate = get_rollback_candidate_from_entry(entry)
-    if not candidate or not candidate.get("pinnedImage"):
-        raise ValueError("No rollback backup found for this container. Run update first.")
-
-    if candidate.get("rollbackType") != "manifest-digest":
-        raise ValueError("Rollback backup format is legacy and not pullable. Run Backup again before rollback.")
+def run_version_rollback(container: Dict[str, Any], target_image_ref: str) -> Dict[str, Any]:
+    target = str(target_image_ref or "").strip()
+    if not target:
+        raise ValueError("Missing rollback target image. Run check and pick a version from dropdown.")
 
     raw = container.get("raw") if isinstance(container.get("raw"), dict) else {}
     previous_image = str(raw.get("remote-image") or container.get("image") or "")
 
-    try:
-        current_ref = CLIENT.resolve_rollback_image_reference(previous_image, str(raw.get("arch") or ""))
-        if str(current_ref.get("pinnedImage") or "") == str(candidate.get("pinnedImage") or ""):
-            return {
-                "mode": "custom-digest-rollback",
-                "noop": True,
-                "message": "Container is already on the backup digest; rollback was skipped.",
-                "rollbackImage": candidate.get("pinnedImage"),
-                "backupSavedAt": candidate.get("savedAt") or "",
-                "rollbackStrategy": candidate.get("strategy") or "unknown",
-            }
-    except Exception:
-        pass
+    if previous_image == target:
+        return {
+            "mode": "version-rollback",
+            "noop": True,
+            "message": "Container already uses selected rollback image.",
+            "rollbackImage": target,
+            "previousImage": previous_image,
+        }
 
-    CLIENT.set_container_remote_image(container, str(candidate.get("pinnedImage")))
-
+    CLIENT.set_container_remote_image(container, target)
     try:
         update_result = CLIENT.run_container_action("update", container)
+        return {
+            "mode": "version-rollback",
+            "rollbackImage": target,
+            "previousImage": previous_image,
+            "updateResult": update_result,
+        }
     except Exception as rollback_error:
         restore_result = None
         restore_error = ""
@@ -849,27 +890,18 @@ def run_custom_rollback(container: Dict[str, Any]) -> Dict[str, Any]:
             restore_error = str(recovery_error)
 
         friendly = ValueError(
-            "Rollback image is unavailable in registry. Current image was restored automatically."
+            "Rollback target failed to apply. Previous image was restored automatically."
             if restore_result
-            else "Rollback image is unavailable in registry, and automatic restore failed."
+            else "Rollback target failed and automatic restore also failed."
         )
         friendly.details = {
-            "rollbackImage": candidate.get("pinnedImage"),
+            "rollbackImage": target,
             "previousImage": previous_image,
             "rollbackError": str(rollback_error),
             "restored": bool(restore_result),
             "restoreError": restore_error or None,
-            "rollbackStrategy": candidate.get("strategy") or "unknown",
         }
         raise friendly
-
-    return {
-        "mode": "custom-digest-rollback",
-        "rollbackImage": candidate.get("pinnedImage"),
-        "backupSavedAt": candidate.get("savedAt") or "",
-        "rollbackStrategy": candidate.get("strategy") or "unknown",
-        "updateResult": update_result,
-    }
 
 
 def parse_json_body(handler: BaseHTTPRequestHandler) -> Dict[str, Any]:
@@ -932,7 +964,9 @@ def resolve_static_path(raw_path: str) -> Optional[Path]:
     return candidate
 
 
-def run_single_action(action: str, container: Dict[str, Any]) -> Dict[str, Any]:
+def run_single_action(action: str, container: Dict[str, Any], payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    request_payload = payload if isinstance(payload, dict) else {}
+
     if action == "check":
         return {
             "ok": True,
@@ -948,21 +982,21 @@ def run_single_action(action: str, container: Dict[str, Any]) -> Dict[str, Any]:
             "result": {"mode": "custom-backup", **(backup or {})},
         }
 
-    warning = ""
-    if action == "update":
-        backup = save_rollback_point(container, reason="update")
-        if not backup:
-            warning = "Auto-backup skipped: rollback manifest digest is unavailable"
+    if action == "rollback":
+        target_image_ref = str(request_payload.get("targetImageRef") or "")
+        return {
+            "ok": True,
+            "container": {"id": container["id"], "name": container["name"]},
+            "result": run_version_rollback(container, target_image_ref),
+        }
 
     result = CLIENT.run_container_action(action, container)
-    payload: Dict[str, Any] = {
+    response_payload: Dict[str, Any] = {
         "ok": True,
         "container": {"id": container["id"], "name": container["name"]},
         "result": result,
     }
-    if warning:
-        payload["warning"] = warning
-    return payload
+    return response_payload
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1012,6 +1046,7 @@ class Handler(BaseHTTPRequestHandler):
 
         match_single = re.match(r"^/api/containers/([^/]+)/actions/([^/]+)$", self.path)
         if match_single:
+            body = parse_json_body(self)
             container_id = unquote(match_single.group(1))
             action = action_from_param(unquote(match_single.group(2)))
             if not action:
@@ -1025,46 +1060,14 @@ class Handler(BaseHTTPRequestHandler):
                 return True
 
             try:
-                result = run_single_action(action, container)
+                result = run_single_action(action, container, payload=body)
                 json_response(
                     self,
                     200,
                     {"ok": True, "action": action, "container": result["container"], "result": result["result"], **({"warning": result["warning"]} if "warning" in result else {})},
                 )
                 return True
-            except Exception as error:
-                if is_unsupported_action_error(action, error):
-                    if action == "rollback":
-                        try:
-                            custom_result = run_custom_rollback(container)
-                            json_response(
-                                self,
-                                200,
-                                {
-                                    "ok": True,
-                                    "action": action,
-                                    "fallback": True,
-                                    "message": "RouterOS rollback unsupported, used custom digest rollback",
-                                    "container": {"id": container["id"], "name": container["name"]},
-                                    "result": custom_result,
-                                },
-                            )
-                            return True
-                        except Exception as fallback_error:
-                            json_response(
-                                self,
-                                400,
-                                {
-                                    "ok": False,
-                                    "action": action,
-                                    "error": str(fallback_error),
-                                    "container": {"id": container["id"], "name": container["name"]},
-                                    "details": getattr(fallback_error, "details", None)
-                                    or getattr(error, "details", None),
-                                },
-                            )
-                            return True
-
+            except Exception:
                 raise
 
         match_bulk = re.match(r"^/api/containers/actions/([^/]+)$", self.path)
@@ -1077,6 +1080,8 @@ class Handler(BaseHTTPRequestHandler):
             body = parse_json_body(self)
             container_ids = body.get("containerIds") if isinstance(body, dict) else None
             ids = [str(item) for item in container_ids] if isinstance(container_ids, list) else None
+            rollback_targets = body.get("rollbackTargets") if isinstance(body, dict) else None
+            rollback_targets = rollback_targets if isinstance(rollback_targets, dict) else {}
 
             containers = fetch_normalized_containers()
             targets = [c for c in containers if not ids or c["id"] in ids]
@@ -1084,7 +1089,10 @@ class Handler(BaseHTTPRequestHandler):
             results: List[Dict[str, Any]] = []
             for container in targets:
                 try:
-                    single = run_single_action(action, container)
+                    single_payload: Dict[str, Any] = {}
+                    if action == "rollback":
+                        single_payload["targetImageRef"] = str(rollback_targets.get(container["id"]) or "")
+                    single = run_single_action(action, container, payload=single_payload)
                     row = {
                         "ok": True,
                         "container": single["container"],
@@ -1094,43 +1102,6 @@ class Handler(BaseHTTPRequestHandler):
                         row["warning"] = single["warning"]
                     results.append(row)
                 except Exception as error:
-                    if is_unsupported_action_error(action, error):
-                        if action == "rollback":
-                            try:
-                                custom_result = run_custom_rollback(container)
-                                results.append(
-                                    {
-                                        "ok": True,
-                                        "fallback": True,
-                                        "container": {"id": container["id"], "name": container["name"]},
-                                        "message": "RouterOS rollback unsupported, used custom digest rollback",
-                                        "result": custom_result,
-                                    }
-                                )
-                                continue
-                            except Exception as fallback_error:
-                                results.append(
-                                    {
-                                        "ok": False,
-                                        "container": {"id": container["id"], "name": container["name"]},
-                                        "error": str(fallback_error),
-                                        "details": getattr(fallback_error, "details", None)
-                                        or getattr(error, "details", None),
-                                    }
-                                )
-                                continue
-
-                        results.append(
-                            {
-                                "ok": True,
-                                "unsupported": True,
-                                "container": {"id": container["id"], "name": container["name"]},
-                                "message": f"Action '{action}' is not supported by this RouterOS REST build",
-                                "details": getattr(error, "details", None),
-                            }
-                        )
-                        continue
-
                     results.append(
                         {
                             "ok": False,

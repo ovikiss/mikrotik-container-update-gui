@@ -2,6 +2,8 @@ const state = {
   containers: [],
   busy: false,
   checkById: {},
+  rollbackOptionsById: {},
+  rollbackTargetById: {},
   theme: "auto",
   themeStyle: "modern"
 };
@@ -180,7 +182,6 @@ function setBusy(value) {
   state.busy = value;
   const disabled = Boolean(value);
 
-  const hasAnyRollbackBackup = state.containers.some((container) => container.hasRollbackBackup);
   els.bulkButtons.forEach((btn) => {
     if (disabled) {
       btn.disabled = true;
@@ -188,9 +189,10 @@ function setBusy(value) {
     }
 
     const action = btn.dataset.bulkAction;
-    if (action === "rollback" && !hasAnyRollbackBackup) {
+    const hasRollbackSelection = Object.values(state.rollbackTargetById).some(Boolean);
+    if (action === "rollback" && !hasRollbackSelection) {
       btn.disabled = true;
-      btn.title = "No rollback backups available yet. Run update first.";
+      btn.title = "No rollback target selected. Run check and choose a rollback version.";
       return;
     }
 
@@ -257,7 +259,6 @@ function renderRows() {
     fragment.querySelector('[data-col="image"]').textContent = container.image || "-";
 
     const checkState = state.checkById[container.id] || { state: "unchecked", text: "unchecked" };
-    const rollbackReady = Boolean(container.hasRollbackBackup);
     const updatePill = fragment.querySelector('[data-col="updateState"]');
     updatePill.textContent = checkState.text;
     updatePill.classList.remove("available", "current", "unknown");
@@ -266,6 +267,40 @@ function renderRows() {
     if (checkState.state === "unknown" || checkState.state === "unchecked") {
       updatePill.classList.add("unknown");
     }
+
+    const rollbackSelect = fragment.querySelector('[data-role="rollback-select"]');
+    const rollbackOptions = Array.isArray(state.rollbackOptionsById[container.id])
+      ? state.rollbackOptionsById[container.id]
+      : [];
+    const selectedTarget = state.rollbackTargetById[container.id] || "";
+    rollbackSelect.innerHTML = "";
+    const defaultOption = document.createElement("option");
+    defaultOption.value = "";
+    defaultOption.textContent = rollbackOptions.length > 0
+      ? "Select rollback version"
+      : "Run check to load versions";
+    rollbackSelect.appendChild(defaultOption);
+    rollbackOptions.forEach((option) => {
+      const opt = document.createElement("option");
+      opt.value = option.imageRef;
+      opt.textContent = option.label;
+      rollbackSelect.appendChild(opt);
+    });
+    rollbackSelect.value = selectedTarget && rollbackOptions.some((entry) => entry.imageRef === selectedTarget)
+      ? selectedTarget
+      : "";
+    rollbackSelect.disabled = rollbackOptions.length === 0;
+    const rollbackButton = fragment.querySelector('[data-action="rollback"]');
+    rollbackSelect.addEventListener("change", () => {
+      state.rollbackTargetById[container.id] = rollbackSelect.value || "";
+      const ready = Boolean(state.rollbackTargetById[container.id]);
+      rollbackButton.dataset.staticDisabled = ready ? "0" : "1";
+      rollbackButton.disabled = state.busy || !ready;
+      rollbackButton.title = ready
+        ? ""
+        : "Choose rollback version from dropdown (run check first).";
+      setBusy(state.busy);
+    });
 
     fragment.querySelectorAll("[data-action]").forEach((btn) => {
       btn.dataset.staticDisabled = "0";
@@ -276,10 +311,11 @@ function renderRows() {
       }
 
       if (btn.dataset.action === "rollback") {
+        const rollbackReady = Boolean(state.rollbackTargetById[container.id]);
         btn.dataset.staticDisabled = rollbackReady ? "0" : "1";
         btn.title = rollbackReady
           ? ""
-          : "Rollback backup unavailable. Run update first for this container.";
+          : "Choose rollback version from dropdown (run check first).";
       }
 
       btn.addEventListener("click", () => runSingleAction(container.id, btn.dataset.action));
@@ -310,6 +346,11 @@ function digestCheckToUiState(result) {
 
 function applyCheckResult(containerId, result) {
   state.checkById[containerId] = digestCheckToUiState(result);
+  const options = Array.isArray(result?.rollbackOptions) ? result.rollbackOptions : [];
+  state.rollbackOptionsById[containerId] = options;
+  if (!options.some((option) => option.imageRef === state.rollbackTargetById[containerId])) {
+    state.rollbackTargetById[containerId] = options[0]?.imageRef || "";
+  }
 }
 
 function setConnection(ok, text) {
@@ -332,6 +373,13 @@ async function loadContainers() {
 
     setConnection(true, "Connected to RouterOS");
     state.containers = data.containers || [];
+    const validIds = new Set(state.containers.map((container) => container.id));
+    Object.keys(state.rollbackOptionsById).forEach((id) => {
+      if (!validIds.has(id)) delete state.rollbackOptionsById[id];
+    });
+    Object.keys(state.rollbackTargetById).forEach((id) => {
+      if (!validIds.has(id)) delete state.rollbackTargetById[id];
+    });
     renderRows();
     els.countLabel.textContent = `Containers: ${health.containerCount}`;
     appendLog(`Loaded ${health.containerCount} containers`);
@@ -347,8 +395,13 @@ async function runSingleAction(id, action) {
   setBusy(true);
   try {
     appendLog(`Running '${action}' on container ${id}`);
+    const body = {};
+    if (action === "rollback") {
+      body.targetImageRef = state.rollbackTargetById[id] || "";
+    }
     const result = await apiRequest(`/api/containers/${encodeURIComponent(id)}/actions/${action}`, {
-      method: "POST"
+      method: "POST",
+      body: JSON.stringify(body)
     });
     appendLog(
       `Action '${action}' completed for ${result.container.name}`,
@@ -384,15 +437,13 @@ async function runBulkAction(action) {
     return;
   }
 
-  if (action === "rollback" && selectedIds.length === 0) {
-    ids = state.containers
-      .filter((container) => container.hasRollbackBackup)
-      .map((container) => container.id);
-  }
-
-  if (action === "rollback" && ids.length === 0) {
-    appendLog("No rollback backups available. Run update first on target containers.");
-    return;
+  if (action === "rollback") {
+    const source = selectedIds.length > 0 ? selectedIds : state.containers.map((container) => container.id);
+    ids = source.filter((containerId) => Boolean(state.rollbackTargetById[containerId]));
+    if (ids.length === 0) {
+      appendLog("No rollback targets selected. Run check first and pick versions from dropdown.");
+      return;
+    }
   }
 
   const scopeLabel = ids.length ? `${ids.length} selected containers` : "all containers";
@@ -400,9 +451,15 @@ async function runBulkAction(action) {
   setBusy(true);
   try {
     appendLog(`Running bulk '${action}' on ${scopeLabel}`);
+    const rollbackTargets = {};
+    if (action === "rollback") {
+      ids.forEach((containerId) => {
+        rollbackTargets[containerId] = state.rollbackTargetById[containerId];
+      });
+    }
     const result = await apiRequest(`/api/containers/actions/${action}`, {
       method: "POST",
-      body: JSON.stringify({ containerIds: ids })
+      body: JSON.stringify({ containerIds: ids, rollbackTargets })
     });
 
     appendLog(

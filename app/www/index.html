@@ -67,7 +67,6 @@
 
         <div class="toolbar">
           <button class="btn ghost" data-bulk-action="check">Check selected/all</button>
-          <button class="btn ghost" data-bulk-action="backup">Backup selected/all</button>
           <button class="btn" data-bulk-action="update">Update selected/all</button>
           <button class="btn danger" data-bulk-action="rollback">Rollback selected/all</button>
         </div>
@@ -107,8 +106,10 @@
         <td>
           <div class="row-actions">
             <button class="btn tiny ghost" data-action="check">Check</button>
-            <button class="btn tiny ghost" data-action="backup">Backup</button>
             <button class="btn tiny" data-action="update">Update</button>
+            <select class="rollback-select" data-role="rollback-select" title="Rollback target version">
+              <option value="">Select rollback version</option>
+            </select>
             <button class="btn tiny danger" data-action="rollback">Rollback</button>
           </div>
         </td>
