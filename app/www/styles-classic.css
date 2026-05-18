@@ -11,6 +11,7 @@
   --glass-blur: none;
   --glass-shadow: none;
   --glass-inset: none;
+  --wallpaper-url: none;
 }
 
 html[data-theme="dark"] {
@@ -21,10 +22,15 @@ html[data-theme="dark"] {
   --muted: #aabacd;
   --table-head: #32425c;
   --table-border: #566c8b;
+  --wallpaper-url: none;
 }
 
 body {
   background: var(--bg);
+}
+
+body::before {
+  display: none;
 }
 
 .panel {
