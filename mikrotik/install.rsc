@@ -73,13 +73,22 @@
   :local mcugOldId [/container/find where name=$mcugContainerName]
   :do { /container/stop $mcugOldId } on-error={ :put "Container stop skipped (already stopped)." }
   :local mcugWait 0
-  :while ([:len [/container/find where .id=$mcugOldId and status="running"]] > 0 && $mcugWait < 10) do={
+  :while ([:len [/container/find where .id=$mcugOldId and running=true]] > 0 && $mcugWait < 20) do={
     /delay 1
     :set mcugWait ($mcugWait + 1)
   }
-  :do { /container/remove $mcugOldId } on-error={
-    /delay 2
-    /container/remove $mcugOldId
+  :local mcugRemoved false
+  :for i from=1 to=15 do={
+    :if ($mcugRemoved = true) do={ :break }
+    :do {
+      /container/remove $mcugOldId
+      :set mcugRemoved true
+    } on-error={
+      /delay 1
+    }
+  }
+  :if ($mcugRemoved = false) do={
+    :error "Failed to remove existing container-update-gui container after retries."
   }
 }
 
