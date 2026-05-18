@@ -11,6 +11,7 @@ const els = {
   themeStyleCss: document.getElementById("themeStyleCss"),
   themeToggle: document.getElementById("themeToggle"),
   themeMenu: document.getElementById("themeMenu"),
+  themeCurrentIcon: document.getElementById("themeCurrentIcon"),
   themeCurrentLabel: document.getElementById("themeCurrentLabel"),
   themeSelect: document.getElementById("themeSelect"),
   themeDropdown: document.getElementById("themeDropdown"),
@@ -29,8 +30,8 @@ const els = {
 };
 
 const THEME_ITEMS = [
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" }
+  { value: "light", label: "Light", icon: "/images/ui/theme-light.svg" },
+  { value: "dark", label: "Dark", icon: "/images/ui/theme-dark.svg" }
 ];
 
 const THEME_STYLE_ITEMS = [
@@ -50,6 +51,7 @@ function closeThemeStyleMenu() {
 
 function updateThemeButton() {
   const picked = THEME_ITEMS.find((item) => item.value === state.theme) || THEME_ITEMS[0];
+  els.themeCurrentIcon.setAttribute("src", picked.icon);
   els.themeCurrentLabel.textContent = picked.label;
 }
 
@@ -93,7 +95,7 @@ function renderThemeMenu() {
     button.type = "button";
     button.className = "theme-item";
     button.setAttribute("role", "option");
-    button.textContent = item.label;
+    button.innerHTML = `<img src="${item.icon}" alt="" /><span>${item.label}</span>`;
     button.addEventListener("click", () => {
       closeThemeMenu();
       setTheme(item.value);
@@ -110,7 +112,7 @@ function renderThemeStyleMenu() {
     button.type = "button";
     button.className = "theme-item";
     button.setAttribute("role", "option");
-    button.textContent = item.label;
+    button.innerHTML = `<img src="/images/ui/theme-style.svg" alt="" /><span>${item.label}</span>`;
     button.addEventListener("click", () => {
       closeThemeStyleMenu();
       setThemeStyle(item.value);

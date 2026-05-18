@@ -32,6 +32,5 @@ body {
 }
 
 .btn {
-  background: var(--blue);
   border-radius: 9px;
 }

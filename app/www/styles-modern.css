@@ -16,6 +16,10 @@
   --overlay-dim: rgba(238, 245, 255, 0.08);
   --overlay-a: rgba(31, 84, 160, 0.2);
   --overlay-b: rgba(23, 62, 126, 0.16);
+  --primary: #0c7c59;
+  --primary-ink: #ffffff;
+  --ghost-bg: #ebf0f5;
+  --ghost-ink: #243142;
   --danger: #b23327;
 }
 
@@ -36,6 +40,8 @@ html[data-theme="dark"] {
   --overlay-dim: rgba(11, 21, 35, 0.26);
   --overlay-a: rgba(25, 67, 131, 0.24);
   --overlay-b: rgba(21, 56, 109, 0.2);
+  --ghost-bg: rgba(61, 79, 109, 0.7);
+  --ghost-ink: #e8eff8;
 }
 
 html[data-theme-style="classic"] {
@@ -136,6 +142,13 @@ html[data-theme-style="classic"] body {
   -webkit-backdrop-filter: var(--glass-blur);
 }
 
+.theme-toggle img,
+.theme-item img {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
 .theme-menu {
   position: absolute;
   right: 0;
@@ -161,6 +174,7 @@ html[data-theme-style="classic"] body {
   white-space: nowrap;
   display: flex;
   align-items: center;
+  gap: 8px;
   border: 0;
   background: transparent;
   color: var(--ink);
@@ -257,15 +271,10 @@ html[data-theme-style="classic"] .panel {
   border-radius: 10px;
   padding: 9px 12px;
   cursor: pointer;
-  background: linear-gradient(135deg, rgba(71, 126, 224, 0.95), rgba(89, 141, 233, 0.95));
-  color: #fff;
+  background: var(--primary);
+  color: var(--primary-ink);
   font-weight: 700;
   box-shadow: var(--glass-inset);
-}
-
-html[data-theme-style="classic"] .btn {
-  background: var(--blue);
-  border-radius: 9px;
 }
 
 .btn:disabled {
@@ -274,8 +283,8 @@ html[data-theme-style="classic"] .btn {
 }
 
 .btn.ghost {
-  background: var(--panel-strong);
-  color: var(--ink);
+  background: var(--ghost-bg);
+  color: var(--ghost-ink);
 }
 
 .btn.danger {
