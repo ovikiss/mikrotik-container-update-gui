@@ -586,6 +586,7 @@ class RouterOsClient:
                 continue
             semver_tags.append((parsed_semver, tag))
         semver_tags.sort(key=lambda item: item[0], reverse=True)
+        newest_semver_tag = semver_tags[0][1] if semver_tags else ""
 
         if anchor_tag:
             # Universal policy: always keep currently configured tag as anchor.
@@ -595,10 +596,15 @@ class RouterOsClient:
             add_candidate(tag)
 
         if candidate_tags:
+            def format_label(tag: str) -> str:
+                if tag in ("latest", "stable") and newest_semver_tag:
+                    return f"{tag} ({newest_semver_tag})"
+                return tag
+
             return [
                 {
                     "tag": tag,
-                    "label": tag,
+                    "label": format_label(tag),
                     "imageRef": f"{base_image}:{tag}",
                 }
                 for tag in candidate_tags
