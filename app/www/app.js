@@ -280,6 +280,14 @@ function isChannelSwitchPending(container, selectedTargetImageRef) {
   return Boolean(currentRef) && selectedRef !== currentRef;
 }
 
+function isContainerUpdateEligible(container) {
+  if (!container) return false;
+  const checkAvailable = state.checkById[container.id]?.state === "available";
+  const selectedTarget = state.rollbackTargetById[container.id] || "";
+  const channelSwitchPending = isChannelSwitchPending(container, selectedTarget);
+  return checkAvailable || channelSwitchPending;
+}
+
 function availableUpdatesCount() {
   return state.containers.filter((container) => state.checkById[container.id]?.state === "available").length;
 }
@@ -307,15 +315,26 @@ function refreshBulkUpdateButton() {
     els.bulkUpdateLabel = labelEl;
   }
 
-  const selectedCount = selectedContainerIds().length;
+  const selectedIds = selectedContainerIds();
+  const selectedCount = selectedIds.length;
+  const selectedEligibleCount = selectedIds.filter((id) => {
+    const container = state.containers.find((entry) => entry.id === id);
+    return isContainerUpdateEligible(container);
+  }).length;
   const checkedCount = Object.keys(state.checkById).length;
   const availableCount = availableUpdatesCount();
   els.bulkUpdateButton.classList.remove("is-pending", "is-ready", "is-empty", "is-selected");
 
   if (selectedCount > 0) {
-    els.bulkUpdateButton.classList.add("is-selected");
-    iconEl.textContent = "↑";
-    labelEl.textContent = `Update selected (${selectedCount})`;
+    if (selectedEligibleCount > 0) {
+      els.bulkUpdateButton.classList.add("is-selected");
+      iconEl.textContent = "↑";
+      labelEl.textContent = `Update selected (${selectedCount})`;
+    } else {
+      els.bulkUpdateButton.classList.add("is-empty");
+      iconEl.textContent = "↓";
+      labelEl.textContent = `Update selected (${selectedCount})`;
+    }
     return;
   }
 
@@ -591,12 +610,19 @@ async function runBulkAction(action) {
 
   if (action === "update" && selectedIds.length === 0) {
     ids = state.containers
-      .filter((container) => state.checkById[container.id]?.state === "available" && !state.updateLockedById[container.id])
+      .filter((container) => isContainerUpdateEligible(container) && !state.updateLockedById[container.id])
       .map((container) => container.id);
   }
 
+  if (action === "update" && selectedIds.length > 0) {
+    ids = selectedIds.filter((id) => {
+      const container = state.containers.find((entry) => entry.id === id);
+      return isContainerUpdateEligible(container) && !state.updateLockedById[id];
+    });
+  }
+
   if (action === "update" && ids.length === 0) {
-    appendLog("No containers marked with updates. Run check first or select specific containers.");
+    appendLog("No eligible updates in current selection. Run check first or choose a channel switch.");
     return;
   }
 
