@@ -184,6 +184,14 @@ function appendLog(message, obj) {
   }
 }
 
+function isTransientFetchDrop(error) {
+  return /failed to fetch/i.test(String(error?.message || ""));
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function setBusy(value) {
   state.busy = value;
   const disabled = Boolean(value);
@@ -535,7 +543,14 @@ async function runSingleAction(id, action) {
       await loadContainers();
     }
   } catch (error) {
-    appendLog(`Action '${action}' failed on ${id}: ${error.message}`, error.details || {});
+    if (action === "update" && isTransientFetchDrop(error)) {
+      appendLog(`Action '${action}' on ${id}: connection dropped during update, refreshing status...`);
+      await sleep(2200);
+      state.checkById = {};
+      await loadContainers();
+    } else {
+      appendLog(`Action '${action}' failed on ${id}: ${error.message}`, error.details || {});
+    }
   } finally {
     setBusy(false);
   }
@@ -611,7 +626,14 @@ async function runBulkAction(action) {
       await loadContainers();
     }
   } catch (error) {
-    appendLog(`Bulk '${action}' failed: ${error.message}`, error.details || {});
+    if (action === "update" && isTransientFetchDrop(error)) {
+      appendLog("Bulk 'update': connection dropped during update, refreshing status...");
+      await sleep(2200);
+      state.checkById = {};
+      await loadContainers();
+    } else {
+      appendLog(`Bulk '${action}' failed: ${error.message}`, error.details || {});
+    }
   } finally {
     setBusy(false);
   }
