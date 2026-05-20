@@ -9,11 +9,12 @@
 - README rewritten and aligned with current runtime/deploy behavior.
 - Internal container port aligned with env-driven port (`HTTP_PORT`, image default `8090`).
 - Added `DATA_DIR` to `.env.example`.
-- Rollback version policy is now universal for all containers:
-  - always show current configured tag first (`latest`, `stable`, or fixed tag)
-  - then append top 3 semantic `v*` tags
+- Rollback/version dropdown policy upgraded:
+  - includes `latest` + `stable` (when available) + newest `3 x v*` tags
+  - `latest`/`stable` entries display resolved version labels (example: `stable (v1.96.5)`)
 - Docker Hub tag discovery hardened:
-  - fallback to Hub tags API when registry `/v2/.../tags/list` is empty or missing `v*` tags
+  - fallback to Hub tags API when registry `/v2/.../tags/list` is empty or missing enough `v*` tags
+  - registry pagination support (`Link rel=next`) for high-tag repositories (for example `tailscale`)
   - TLS certificate verify fallback retry for environments with incomplete CA bundle
 - Rollback hardening:
   - If rollback target digest is already running, action is skipped (`no-op`) to avoid RouterOS `skip importing same version` breakage.
@@ -22,6 +23,23 @@
   - `update` now stores a dedicated `lastKnownGood` snapshot (the version before update).
   - manual `backup` no longer overrides `lastKnownGood`.
   - `rollback` prefers `lastKnownGood` (exactly the previous functional version), then falls back to manual backup.
+- Channel switch + rollback behavior refinements:
+  - `Update` supports channel switch (`stable` <-> `latest`) when selected from dropdown
+  - if container currently tracks `stable`/`latest` and rollback target is fixed `v*`, rollback applies fixed version but keeps original tracking channel
+  - if rollback target is explicitly `stable`/`latest`, tracking channel changes to selected target
+- UI/UX updates:
+  - Dockhand-style bulk update button with dynamic states (`pending`, `ready`, `empty`, `selected`)
+  - manual selection updates bulk button count live (`Update selected (N)`)
+  - rows with `update available` are auto-selected after check
+  - one-click lock behavior for row update/rollback (hidden after click, unlocked by next check)
+  - transient `Failed to fetch` during update is treated as reconnect and auto-refresh, not hard failure
+  - update operations now skip non-eligible manual selections to prevent RouterOS-side failures
+  - consistent bulk update button state styling in both `Modern` and `Classic` themes
+- RouterOS install script hardening:
+  - `mcug-gui` NAT rule is now create-or-update (ensures rule exists if missing)
+  - NAT `to-addresses` derives from runtime `veth` container host IP
+  - fixed runtime IP parsing to avoid prefix-form `to-addresses`
+  - added env key `VETH` to container env list
 
 ## v0.2 - 2026-05-18
 
