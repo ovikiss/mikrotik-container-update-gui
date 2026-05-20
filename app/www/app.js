@@ -249,11 +249,13 @@ function updateSelectAllState() {
   const checks = Array.from(els.containersBody.querySelectorAll(".row-select"));
   if (checks.length === 0) {
     els.selectAll.checked = false;
+    refreshBulkUpdateButton();
     return;
   }
 
   const checkedCount = checks.filter((input) => input.checked).length;
   els.selectAll.checked = checkedCount === checks.length;
+  refreshBulkUpdateButton();
 }
 
 function extractImageReference(imageRef) {
@@ -286,9 +288,17 @@ function refreshBulkUpdateButton() {
     return;
   }
 
+  const selectedCount = selectedContainerIds().length;
   const checkedCount = Object.keys(state.checkById).length;
   const availableCount = availableUpdatesCount();
-  els.bulkUpdateButton.classList.remove("is-pending", "is-ready", "is-empty");
+  els.bulkUpdateButton.classList.remove("is-pending", "is-ready", "is-empty", "is-selected");
+
+  if (selectedCount > 0) {
+    els.bulkUpdateButton.classList.add("is-selected");
+    els.bulkUpdateIcon.textContent = "↑";
+    els.bulkUpdateLabel.textContent = `Update selected (${selectedCount})`;
+    return;
+  }
 
   if (checkedCount === 0) {
     els.bulkUpdateButton.classList.add("is-pending");
