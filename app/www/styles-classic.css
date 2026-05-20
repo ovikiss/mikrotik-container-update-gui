@@ -41,6 +41,45 @@ body::before {
   border-radius: 9px;
 }
 
+.bulk-update-btn {
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+
+.bulk-update-btn.is-pending,
+.bulk-update-btn.is-empty {
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+
+.bulk-update-btn.is-pending .bulk-update-icon,
+.bulk-update-btn.is-empty .bulk-update-icon {
+  border: 2px solid rgba(230, 237, 246, 0.48);
+  color: rgba(230, 237, 246, 0.76);
+}
+
+.bulk-update-btn.is-pending .bulk-update-label,
+.bulk-update-btn.is-empty .bulk-update-label {
+  color: rgba(230, 237, 246, 0.76);
+}
+
+.bulk-update-btn.is-ready,
+.bulk-update-btn.is-selected {
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+
+.bulk-update-btn.is-ready .bulk-update-icon,
+.bulk-update-btn.is-selected .bulk-update-icon {
+  border: 2px solid #ffd15c;
+  color: #ffd15c;
+}
+
+.bulk-update-btn.is-ready .bulk-update-label,
+.bulk-update-btn.is-selected .bulk-update-label {
+  color: #ffd15c;
+}
+
 .update-pill {
   white-space: nowrap;
   min-width: max-content;

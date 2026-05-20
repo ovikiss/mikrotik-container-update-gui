@@ -240,9 +240,10 @@ async function apiRequest(url, options = {}) {
 }
 
 function selectedContainerIds() {
-  return Array.from(els.containersBody.querySelectorAll(".row-select:checked"))
-    .map((input) => input.dataset.id)
-    .filter(Boolean);
+  const validIds = new Set(state.containers.map((container) => container.id));
+  return Object.entries(state.selectedById)
+    .filter(([id, isSelected]) => Boolean(isSelected) && validIds.has(id))
+    .map(([id]) => id);
 }
 
 function updateSelectAllState() {
@@ -284,8 +285,26 @@ function availableUpdatesCount() {
 }
 
 function refreshBulkUpdateButton() {
-  if (!els.bulkUpdateButton || !els.bulkUpdateLabel || !els.bulkUpdateIcon) {
+  if (!els.bulkUpdateButton) {
     return;
+  }
+
+  let iconEl = els.bulkUpdateIcon;
+  let labelEl = els.bulkUpdateLabel;
+  if (!iconEl || !labelEl) {
+    const existingText = (els.bulkUpdateButton.textContent || "").trim() || "Update all";
+    els.bulkUpdateButton.textContent = "";
+    iconEl = document.createElement("span");
+    iconEl.className = "bulk-update-icon";
+    iconEl.setAttribute("aria-hidden", "true");
+    iconEl.textContent = "↓";
+    labelEl = document.createElement("span");
+    labelEl.className = "bulk-update-label";
+    labelEl.textContent = existingText;
+    els.bulkUpdateButton.appendChild(iconEl);
+    els.bulkUpdateButton.appendChild(labelEl);
+    els.bulkUpdateIcon = iconEl;
+    els.bulkUpdateLabel = labelEl;
   }
 
   const selectedCount = selectedContainerIds().length;
@@ -295,28 +314,28 @@ function refreshBulkUpdateButton() {
 
   if (selectedCount > 0) {
     els.bulkUpdateButton.classList.add("is-selected");
-    els.bulkUpdateIcon.textContent = "↑";
-    els.bulkUpdateLabel.textContent = `Update selected (${selectedCount})`;
+    iconEl.textContent = "↑";
+    labelEl.textContent = `Update selected (${selectedCount})`;
     return;
   }
 
   if (checkedCount === 0) {
     els.bulkUpdateButton.classList.add("is-pending");
-    els.bulkUpdateIcon.textContent = "↓";
-    els.bulkUpdateLabel.textContent = "Update all";
+    iconEl.textContent = "↓";
+    labelEl.textContent = "Update all";
     return;
   }
 
   if (availableCount > 0) {
     els.bulkUpdateButton.classList.add("is-ready");
-    els.bulkUpdateIcon.textContent = "↑";
-    els.bulkUpdateLabel.textContent = `Update all (${availableCount})`;
+    iconEl.textContent = "↑";
+    labelEl.textContent = `Update all (${availableCount})`;
     return;
   }
 
   els.bulkUpdateButton.classList.add("is-empty");
-  els.bulkUpdateIcon.textContent = "↓";
-  els.bulkUpdateLabel.textContent = "Update all (0)";
+  iconEl.textContent = "↓";
+  labelEl.textContent = "Update all (0)";
 }
 
 function renderRows() {
