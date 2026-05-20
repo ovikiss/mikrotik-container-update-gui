@@ -588,8 +588,17 @@ class RouterOsClient:
         semver_tags.sort(key=lambda item: item[0], reverse=True)
         newest_semver_tag = semver_tags[0][1] if semver_tags else ""
 
-        if anchor_tag:
-            # Universal policy: always keep currently configured tag as anchor.
+        tags_set = {str(tag).strip() for tag in tags if str(tag or "").strip()}
+
+        # Universal policy:
+        # latest + stable (when present) + 3 semantic v* tags.
+        if "latest" in tags_set:
+            add_candidate("latest")
+        if "stable" in tags_set:
+            add_candidate("stable")
+
+        # Keep current anchor when it's a custom/non-channel tag and not already listed.
+        if anchor_tag and anchor_tag not in ("latest", "stable"):
             add_candidate(anchor_tag)
 
         for _, tag in semver_tags[: max(0, desired_semver_count)]:
@@ -1001,7 +1010,7 @@ def run_version_rollback(container: Dict[str, Any], target_image_ref: str) -> Di
     raw = container.get("raw") if isinstance(container.get("raw"), dict) else {}
     previous_image = str(raw.get("remote-image") or container.get("image") or "").strip()
     preferred_architecture = str(raw.get("arch") or "")
-    tracking_image = previous_image
+    tracking_image = target
 
     rollback_ref = CLIENT.resolve_rollback_image_reference(target, preferred_architecture)
     pinned_target = str(rollback_ref.get("pinnedImage") or "").strip() or target
