@@ -64,14 +64,14 @@
   /ip/address/add interface=$mcugBridge address=($mcugRouterIp . "/" . $mcugMask)
 }
 
-:local mcugContainerIpRuntime $mcugContainerIp
-:local mcugVethAddr [/interface/veth/get [find where name=$mcugVeth] address]
+:local mcugContainerIpRuntime [:tostr $mcugContainerIp]
+:local mcugVethAddr [:tostr [/interface/veth/get [find where name=$mcugVeth] address]]
 :if ([:len $mcugVethAddr] > 0) do={
   :local mcugSlashPos [:find $mcugVethAddr "/"]
   :if ($mcugSlashPos > 0) do={
-    :set mcugContainerIpRuntime [:pick $mcugVethAddr 0 $mcugSlashPos]
+    :set mcugContainerIpRuntime [:tostr [:pick $mcugVethAddr 0 $mcugSlashPos]]
   } else={
-    :set mcugContainerIpRuntime $mcugVethAddr
+    :set mcugContainerIpRuntime [:tostr $mcugVethAddr]
   }
 }
 
