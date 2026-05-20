@@ -352,6 +352,8 @@ html[data-theme-style="classic"] .panel {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  background: var(--primary);
+  color: var(--primary-ink);
 }
 
 .bulk-update-icon {
@@ -368,26 +370,33 @@ html[data-theme-style="classic"] .panel {
 
 .bulk-update-btn.is-pending,
 .bulk-update-btn.is-empty {
-  background: var(--ghost-bg);
-  color: var(--ghost-ink);
+  background: var(--primary);
+  color: var(--primary-ink);
 }
 
 .bulk-update-btn.is-pending .bulk-update-icon,
 .bulk-update-btn.is-empty .bulk-update-icon {
-  border: 2px solid var(--ghost-ink);
-  color: var(--ghost-ink);
-  opacity: 0.72;
+  border: 2px solid rgba(230, 237, 246, 0.48);
+  color: rgba(230, 237, 246, 0.76);
+}
+
+.bulk-update-btn.is-pending .bulk-update-label,
+.bulk-update-btn.is-empty .bulk-update-label {
+  color: rgba(230, 237, 246, 0.76);
 }
 
 .bulk-update-btn.is-ready {
-  background: #ffd15c;
-  border-color: #f4bd2e;
-  color: #273047;
+  background: var(--primary);
+  color: var(--primary-ink);
 }
 
 .bulk-update-btn.is-ready .bulk-update-icon {
-  border: 2px solid #273047;
-  color: #273047;
+  border: 2px solid #ffd15c;
+  color: #ffd15c;
+}
+
+.bulk-update-btn.is-ready .bulk-update-label {
+  color: #ffd15c;
 }
 
 .table-wrap {
