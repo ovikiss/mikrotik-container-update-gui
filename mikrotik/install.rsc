@@ -64,6 +64,17 @@
   /ip/address/add interface=$mcugBridge address=($mcugRouterIp . "/" . $mcugMask)
 }
 
+:local mcugContainerIpRuntime $mcugContainerIp
+:local mcugVethAddr [/interface/veth/get [find where name=$mcugVeth] address]
+:if ([:len $mcugVethAddr] > 0) do={
+  :local mcugSlashPos [:find $mcugVethAddr "/"]
+  :if ($mcugSlashPos > 0) do={
+    :set mcugContainerIpRuntime [:pick $mcugVethAddr 0 $mcugSlashPos]
+  } else={
+    :set mcugContainerIpRuntime $mcugVethAddr
+  }
+}
+
 # Prepare env list for the GUI container
 :foreach e in=[/container/envs/find where list="mcug"] do={ /container/envs/remove $e }
 /container/envs/add list="mcug" key="HTTP_PORT" value=$mcugHttpPort
@@ -104,9 +115,21 @@
 :delay 2
 :do { /container/start [find where name=$mcugContainerName] } on-error={ :put "Container start skipped (already starting)." }
 
-# LAN port-forward to GUI (enforce a single managed rule)
-:foreach n in=[/ip/firewall/nat/find where comment="mcug-gui"] do={ /ip/firewall/nat/remove $n }
-/ip/firewall/nat/add chain=dstnat action=dst-nat protocol=tcp src-address=$mcugLanCidr dst-address=$mcugLanRouterIp dst-port=$mcugHttpPort to-addresses=$mcugContainerIp to-ports=$mcugHttpPort comment="mcug-gui"
+# LAN port-forward to GUI (ensure single managed rule; create if missing, update if exists)
+:local mcugNatPrimary ""
+:foreach n in=[/ip/firewall/nat/find where comment="mcug-gui"] do={
+  :if ([:len $mcugNatPrimary] = 0) do={
+    :set mcugNatPrimary $n
+  } else={
+    /ip/firewall/nat/remove $n
+  }
+}
+
+:if ([:len $mcugNatPrimary] = 0) do={
+  /ip/firewall/nat/add chain=dstnat action=dst-nat protocol=tcp src-address=$mcugLanCidr dst-address=$mcugLanRouterIp dst-port=$mcugHttpPort to-addresses=$mcugContainerIpRuntime to-ports=$mcugHttpPort comment="mcug-gui"
+} else={
+  /ip/firewall/nat/set $mcugNatPrimary chain=dstnat action=dst-nat protocol=tcp src-address=$mcugLanCidr dst-address=$mcugLanRouterIp dst-port=$mcugHttpPort to-addresses=$mcugContainerIpRuntime to-ports=$mcugHttpPort comment="mcug-gui"
+}
 
 # Remove legacy rules from older revisions
 :foreach n in=[/ip/firewall/nat/find where comment="mcug-egress"] do={ /ip/firewall/nat/remove $n }
