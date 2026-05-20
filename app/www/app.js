@@ -244,6 +244,27 @@ function updateSelectAllState() {
   els.selectAll.checked = checkedCount === checks.length;
 }
 
+function extractImageReference(imageRef) {
+  const raw = String(imageRef || "").trim();
+  if (!raw) return "";
+  const withoutDigest = raw.split("@")[0];
+  const slashIndex = withoutDigest.lastIndexOf("/");
+  const colonIndex = withoutDigest.lastIndexOf(":");
+  if (colonIndex > slashIndex) {
+    return withoutDigest.slice(colonIndex + 1).trim().toLowerCase();
+  }
+  return "latest";
+}
+
+function isChannelSwitchPending(container, selectedTargetImageRef) {
+  const selectedRef = extractImageReference(selectedTargetImageRef);
+  if (selectedRef !== "latest" && selectedRef !== "stable") {
+    return false;
+  }
+  const currentRef = extractImageReference(container?.image || "");
+  return Boolean(currentRef) && selectedRef !== currentRef;
+}
+
 function renderRows() {
   els.containersBody.innerHTML = "";
 
@@ -309,11 +330,15 @@ function renderRows() {
 
       if (btn.dataset.action === "update") {
         const updateLocked = Boolean(state.updateLockedById[container.id]);
-        const allowUpdate = checkState.state === "available" && !updateLocked;
+        const selectedTarget = state.rollbackTargetById[container.id] || "";
+        const channelSwitchPending = isChannelSwitchPending(container, selectedTarget);
+        const allowUpdate = (checkState.state === "available" || channelSwitchPending) && !updateLocked;
         btn.classList.toggle("hidden", !allowUpdate);
         if (updateLocked) {
           btn.dataset.staticDisabled = "1";
           btn.title = "Update already sent once. Run check again before retrying.";
+        } else if (channelSwitchPending && checkState.state !== "available") {
+          btn.title = "Apply selected channel switch.";
         } else {
           btn.title = "";
         }
@@ -367,8 +392,16 @@ function applyCheckResult(containerId, result) {
   delete state.rollbackLockedById[containerId];
   const options = Array.isArray(result?.rollbackOptions) ? result.rollbackOptions : [];
   state.rollbackOptionsById[containerId] = options;
+  const container = state.containers.find((entry) => entry.id === containerId);
+  const currentRef = extractImageReference(container?.image || "");
+  const preferredCurrent = options.find((option) => extractImageReference(option.imageRef) === currentRef);
+
   if (!options.some((option) => option.imageRef === state.rollbackTargetById[containerId])) {
-    state.rollbackTargetById[containerId] = options[0]?.imageRef || "";
+    if ((currentRef === "stable" || currentRef === "latest") && preferredCurrent) {
+      state.rollbackTargetById[containerId] = preferredCurrent.imageRef;
+    } else {
+      state.rollbackTargetById[containerId] = options[0]?.imageRef || "";
+    }
   }
 }
 
@@ -430,6 +463,13 @@ async function runSingleAction(id, action) {
 
     appendLog(`Running '${action}' on container ${id}`);
     const body = {};
+    if (action === "update") {
+      const container = state.containers.find((entry) => entry.id === id);
+      const selectedTarget = state.rollbackTargetById[id] || "";
+      if (isChannelSwitchPending(container, selectedTarget)) {
+        body.targetImageRef = selectedTarget;
+      }
+    }
     if (action === "rollback") {
       body.targetImageRef = state.rollbackTargetById[id] || "";
     }

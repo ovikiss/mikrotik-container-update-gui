@@ -1175,6 +1175,24 @@ def run_single_action(action: str, container: Dict[str, Any], payload: Optional[
             "result": run_version_rollback(container, target_image_ref),
         }
 
+    if action == "update":
+        target_image_ref = str(request_payload.get("targetImageRef") or "").strip()
+        if target_image_ref:
+            raw = container.get("raw") if isinstance(container.get("raw"), dict) else {}
+            current_image_ref = str(raw.get("remote-image") or container.get("image") or "").strip()
+            try:
+                current_ref = str(parse_image_reference(current_image_ref).get("reference") or "").strip().lower()
+            except Exception:
+                current_ref = ""
+            try:
+                target_ref = str(parse_image_reference(target_image_ref).get("reference") or "").strip().lower()
+            except Exception:
+                target_ref = ""
+
+            # Channel switch via Update button: stable <-> latest.
+            if target_ref in ("stable", "latest") and target_ref != current_ref:
+                CLIENT.set_container_remote_image(container, target_image_ref)
+
     result = CLIENT.run_container_action(action, container)
     response_payload: Dict[str, Any] = {
         "ok": True,
