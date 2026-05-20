@@ -2,6 +2,7 @@ const state = {
   containers: [],
   busy: false,
   checkById: {},
+  selectedById: {},
   updateLockedById: {},
   rollbackLockedById: {},
   rollbackOptionsById: {},
@@ -29,7 +30,10 @@ const els = {
   logBox: document.getElementById("logBox"),
   connectionBadge: document.getElementById("connectionBadge"),
   countLabel: document.getElementById("countLabel"),
-  bulkButtons: Array.from(document.querySelectorAll("[data-bulk-action]"))
+  bulkButtons: Array.from(document.querySelectorAll("[data-bulk-action]")),
+  bulkUpdateButton: document.querySelector('[data-bulk-action="update"]'),
+  bulkUpdateIcon: document.querySelector('[data-bulk-action="update"] .bulk-update-icon'),
+  bulkUpdateLabel: document.querySelector('[data-bulk-action="update"] .bulk-update-label')
 };
 
 const THEME_ITEMS = [
@@ -265,6 +269,38 @@ function isChannelSwitchPending(container, selectedTargetImageRef) {
   return Boolean(currentRef) && selectedRef !== currentRef;
 }
 
+function availableUpdatesCount() {
+  return state.containers.filter((container) => state.checkById[container.id]?.state === "available").length;
+}
+
+function refreshBulkUpdateButton() {
+  if (!els.bulkUpdateButton || !els.bulkUpdateLabel || !els.bulkUpdateIcon) {
+    return;
+  }
+
+  const checkedCount = Object.keys(state.checkById).length;
+  const availableCount = availableUpdatesCount();
+  els.bulkUpdateButton.classList.remove("is-pending", "is-ready", "is-empty");
+
+  if (checkedCount === 0) {
+    els.bulkUpdateButton.classList.add("is-pending");
+    els.bulkUpdateIcon.textContent = "↓";
+    els.bulkUpdateLabel.textContent = "Update all";
+    return;
+  }
+
+  if (availableCount > 0) {
+    els.bulkUpdateButton.classList.add("is-ready");
+    els.bulkUpdateIcon.textContent = "↑";
+    els.bulkUpdateLabel.textContent = `Update all (${availableCount})`;
+    return;
+  }
+
+  els.bulkUpdateButton.classList.add("is-empty");
+  els.bulkUpdateIcon.textContent = "↓";
+  els.bulkUpdateLabel.textContent = "Update all (0)";
+}
+
 function renderRows() {
   els.containersBody.innerHTML = "";
 
@@ -274,7 +310,11 @@ function renderRows() {
 
     const rowSelect = fragment.querySelector(".row-select");
     rowSelect.dataset.id = container.id;
-    rowSelect.addEventListener("change", updateSelectAllState);
+    rowSelect.checked = Boolean(state.selectedById[container.id]);
+    rowSelect.addEventListener("change", () => {
+      state.selectedById[container.id] = rowSelect.checked;
+      updateSelectAllState();
+    });
 
     fragment.querySelector('[data-col="name"]').textContent = container.name;
     fragment.querySelector('[data-col="id"]').textContent = container.id;
@@ -368,6 +408,7 @@ function renderRows() {
   });
 
   updateSelectAllState();
+  refreshBulkUpdateButton();
 }
 
 function digestCheckToUiState(result) {
@@ -388,6 +429,7 @@ function digestCheckToUiState(result) {
 
 function applyCheckResult(containerId, result) {
   state.checkById[containerId] = digestCheckToUiState(result);
+  state.selectedById[containerId] = state.checkById[containerId].state === "available";
   delete state.updateLockedById[containerId];
   delete state.rollbackLockedById[containerId];
   const options = Array.isArray(result?.rollbackOptions) ? result.rollbackOptions : [];
@@ -437,6 +479,9 @@ async function loadContainers() {
     });
     Object.keys(state.rollbackLockedById).forEach((id) => {
       if (!validIds.has(id)) delete state.rollbackLockedById[id];
+    });
+    Object.keys(state.selectedById).forEach((id) => {
+      if (!validIds.has(id)) delete state.selectedById[id];
     });
     renderRows();
     els.countLabel.textContent = `Containers: ${health.containerCount}`;
@@ -601,7 +646,9 @@ els.selectAll.addEventListener("change", (event) => {
   const checked = event.target.checked;
   els.containersBody.querySelectorAll(".row-select").forEach((input) => {
     input.checked = checked;
+    state.selectedById[input.dataset.id] = checked;
   });
+  updateSelectAllState();
 });
 
 els.bulkButtons.forEach((btn) => {

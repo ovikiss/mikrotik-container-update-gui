@@ -348,6 +348,48 @@ html[data-theme-style="classic"] .panel {
   padding: 6px 9px;
 }
 
+.bulk-update-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bulk-update-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.bulk-update-btn.is-pending,
+.bulk-update-btn.is-empty {
+  background: var(--ghost-bg);
+  color: var(--ghost-ink);
+}
+
+.bulk-update-btn.is-pending .bulk-update-icon,
+.bulk-update-btn.is-empty .bulk-update-icon {
+  border: 2px solid var(--ghost-ink);
+  color: var(--ghost-ink);
+  opacity: 0.72;
+}
+
+.bulk-update-btn.is-ready {
+  background: #ffd15c;
+  border-color: #f4bd2e;
+  color: #273047;
+}
+
+.bulk-update-btn.is-ready .bulk-update-icon {
+  border: 2px solid #273047;
+  color: #273047;
+}
+
 .table-wrap {
   overflow: auto;
 }
