@@ -1012,6 +1012,22 @@ def run_version_rollback(container: Dict[str, Any], target_image_ref: str) -> Di
     preferred_architecture = str(raw.get("arch") or "")
     tracking_image = target
 
+    previous_ref = ""
+    target_ref = ""
+    try:
+        previous_ref = str(parse_image_reference(previous_image).get("reference") or "").strip()
+    except Exception:
+        previous_ref = ""
+    try:
+        target_ref = str(parse_image_reference(target).get("reference") or "").strip()
+    except Exception:
+        target_ref = ""
+
+    # Keep channel tracking when rolling back to a fixed semver tag:
+    # stable -> vX.Y.Z keeps stable, latest -> vX.Y.Z keeps latest.
+    if previous_ref in ("stable", "latest") and parse_semver_tag(target_ref) is not None and previous_image:
+        tracking_image = previous_image
+
     rollback_ref = CLIENT.resolve_rollback_image_reference(target, preferred_architecture)
     pinned_target = str(rollback_ref.get("pinnedImage") or "").strip() or target
 
