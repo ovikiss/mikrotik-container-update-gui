@@ -504,13 +504,44 @@ class RouterOsClient:
             anchor_tag = current_ref
 
         tags: List[str] = []
+        desired_semver_count = max(1, int(max_semver))
         try:
             tags_url = f"https://{parsed['registry']}/v2/{parsed['repository']}/tags/list?n=200"
-            tags_result = self.fetch_registry_json_with_auth(tags_url, accept_header="application/json")
-            if tags_result["ok"]:
+            next_url = tags_url
+            visited_urls = set()
+            seen_tag_names = set()
+            # Walk paginated registry tags so high-tag repos (e.g. tailscale) don't stop at first page.
+            for _ in range(8):
+                if not next_url or next_url in visited_urls:
+                    break
+                visited_urls.add(next_url)
+
+                tags_result = self.fetch_registry_json_with_auth(next_url, accept_header="application/json")
+                if not tags_result.get("ok"):
+                    break
+
                 tags_data = tags_result.get("data") if isinstance(tags_result.get("data"), dict) else {}
                 tags_raw = tags_data.get("tags")
-                tags = [str(tag) for tag in tags_raw] if isinstance(tags_raw, list) else []
+                if isinstance(tags_raw, list):
+                    for tag in tags_raw:
+                        tag_name = str(tag or "").strip()
+                        if tag_name and tag_name not in seen_tag_names:
+                            tags.append(tag_name)
+                            seen_tag_names.add(tag_name)
+
+                headers = tags_result.get("headers") if isinstance(tags_result.get("headers"), dict) else {}
+                link_header = str(headers.get("link") or "")
+                next_match = re.search(r"<([^>]+)>\\s*;\\s*rel=\"?next\"?", link_header, flags=re.IGNORECASE)
+                if not next_match:
+                    break
+                next_candidate = next_match.group(1).strip()
+                if not next_candidate:
+                    break
+                next_url = (
+                    next_candidate
+                    if next_candidate.startswith("http://") or next_candidate.startswith("https://")
+                    else urllib_parse.urljoin(next_url, next_candidate)
+                )
         except Exception:
             tags = []
 
@@ -519,7 +550,8 @@ class RouterOsClient:
         # - or when registry endpoint returns only non-semver tags (common on high-tag repos)
         if parsed.get("registry") == "registry-1.docker.io":
             repository = str(parsed.get("repository") or "")
-            needs_hub_fallback = (not tags) or not any(parse_semver_tag(tag) is not None for tag in tags)
+            semver_count = sum(1 for tag in tags if parse_semver_tag(tag) is not None)
+            needs_hub_fallback = (not tags) or semver_count < desired_semver_count
             if repository and needs_hub_fallback:
                 seen_tag_names = set(tags)
                 for page in range(1, 6):
@@ -559,7 +591,7 @@ class RouterOsClient:
             # Universal policy: always keep currently configured tag as anchor.
             add_candidate(anchor_tag)
 
-        for _, tag in semver_tags[: max(0, int(max_semver))]:
+        for _, tag in semver_tags[: max(0, desired_semver_count)]:
             add_candidate(tag)
 
         if candidate_tags:
