@@ -1010,23 +1010,6 @@ def run_version_rollback(container: Dict[str, Any], target_image_ref: str) -> Di
     raw = container.get("raw") if isinstance(container.get("raw"), dict) else {}
     previous_image = str(raw.get("remote-image") or container.get("image") or "").strip()
     preferred_architecture = str(raw.get("arch") or "")
-    tracking_image = target
-
-    previous_ref = ""
-    target_ref = ""
-    try:
-        previous_ref = str(parse_image_reference(previous_image).get("reference") or "").strip()
-    except Exception:
-        previous_ref = ""
-    try:
-        target_ref = str(parse_image_reference(target).get("reference") or "").strip()
-    except Exception:
-        target_ref = ""
-
-    # Keep channel tracking when rolling back to a fixed semver tag:
-    # stable -> vX.Y.Z keeps stable, latest -> vX.Y.Z keeps latest.
-    if previous_ref in ("stable", "latest") and parse_semver_tag(target_ref) is not None and previous_image:
-        tracking_image = previous_image
 
     rollback_ref = CLIENT.resolve_rollback_image_reference(target, preferred_architecture)
     pinned_target = str(rollback_ref.get("pinnedImage") or "").strip() or target
@@ -1044,23 +1027,15 @@ def run_version_rollback(container: Dict[str, Any], target_image_ref: str) -> Di
     CLIENT.set_container_remote_image(container, pinned_target)
     try:
         update_result = CLIENT.run_container_action("update", container)
-        tracking_restore_error = ""
-        tracking_restored = False
-        if tracking_image and tracking_image != pinned_target:
-            try:
-                CLIENT.set_container_remote_image(container, tracking_image)
-                tracking_restored = True
-            except Exception as restore_tag_error:
-                tracking_restore_error = str(restore_tag_error)
 
         return {
             "mode": "version-rollback",
             "rollbackImage": target,
             "rollbackPinnedImage": pinned_target,
             "previousImage": previous_image,
-            "trackingImage": tracking_image,
-            "trackingImageRestored": tracking_restored,
-            "trackingImageRestoreError": tracking_restore_error or None,
+            "trackingImage": target,
+            "trackingImageRestored": False,
+            "trackingImageRestoreError": None,
             "updateResult": update_result,
         }
     except Exception as rollback_error:
@@ -1186,9 +1161,13 @@ def run_single_action(action: str, container: Dict[str, Any], payload: Optional[
         target_image_ref = str(request_payload.get("targetImageRef") or "").strip()
         raw = container.get("raw") if isinstance(container.get("raw"), dict) else {}
         current_image_ref = str(raw.get("remote-image") or container.get("image") or "").strip()
+        local_image_id = str(raw.get("image-id") or "")
+        normalized_local_image_id = normalize_digest(local_image_id)
+        preferred_architecture = str(raw.get("arch") or "")
         current_ref = ""
         channel_switch_requested = False
         target_ref = ""
+        target_up_to_date: Optional[bool] = None
         try:
             current_ref = str(parse_image_reference(current_image_ref).get("reference") or "").strip().lower()
         except Exception:
@@ -1200,10 +1179,48 @@ def run_single_action(action: str, container: Dict[str, Any], payload: Optional[
             except Exception:
                 target_ref = ""
 
+            try:
+                target_digest = CLIENT.resolve_remote_config_digest(target_image_ref, preferred_architecture)
+                target_normalized = str(target_digest.get("normalizedRemoteConfigDigest") or "")
+                target_up_to_date = bool(
+                    normalized_local_image_id and target_normalized and normalized_local_image_id == target_normalized
+                )
+            except Exception:
+                target_up_to_date = None
+
             # Channel switch via Update button: stable <-> latest.
             channel_switch_requested = target_ref in ("stable", "latest") and target_ref != current_ref
+
+            # RouterOS may still repull/restart same-version channel switches and break container rootfs.
+            # Skip channel switch when digest is already identical.
+            if channel_switch_requested and target_up_to_date is True:
+                return {
+                    "ok": True,
+                    "container": {"id": container["id"], "name": container["name"]},
+                    "result": {
+                        "mode": "digest-compare",
+                        "upToDate": True,
+                        "noop": True,
+                        "message": "Channel switch skipped: target digest is already running.",
+                        "imageRef": current_image_ref,
+                        "targetImageRef": target_image_ref,
+                    },
+                }
+
             if channel_switch_requested:
                 CLIENT.set_container_remote_image(container, target_image_ref)
+            elif target_up_to_date is True:
+                return {
+                    "ok": True,
+                    "container": {"id": container["id"], "name": container["name"]},
+                    "result": {
+                        "mode": "digest-compare",
+                        "upToDate": True,
+                        "noop": True,
+                        "message": "Container already up to date. Update skipped.",
+                        "imageRef": current_image_ref,
+                    },
+                }
 
         # Guard against same-version update calls on RouterOS.
         # They can return "skip importing same version" and leave unstable state on repeated attempts.
