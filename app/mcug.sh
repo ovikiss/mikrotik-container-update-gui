@@ -750,7 +750,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import unquote
 
-from routeros_client import RouterOsClient, RouterOsRequestError
+from routeros_client import RouterOsClient, RouterOsRequestError, normalize_digest
 
 
 def now_iso() -> str:
