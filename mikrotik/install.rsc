@@ -81,7 +81,6 @@
 /container/envs/add list="mcug" key="ROUTEROS_USERNAME" value=$mcugApiUser
 /container/envs/add list="mcug" key="ROUTEROS_PASSWORD" value=$mcugApiPassword
 /container/envs/add list="mcug" key="DATA_DIR" value="/data"
-/container/envs/add list="mcug" key="VETH" value=$mcugVeth
 
 # Prepare mount list for persistent settings/rollback state
 :foreach m in=[/container/mounts/find where list="mcug"] do={ /container/mounts/remove $m }

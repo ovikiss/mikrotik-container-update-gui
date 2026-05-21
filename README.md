@@ -11,9 +11,21 @@ Current release: `v0.3` (see `CHANGELOG.md`).
 - `check` uses digest comparison (local vs registry).
 - `update` stores an automatic pre-update backup (`lastKnownGood`).
 - `rollback` uses persistent backup logic (without relying on RouterOS `/container/rollback`).
-- Universal rollback version policy for all images:
-- always shows the current configured tag first (`latest`, `stable`, or pinned tag)
-- then appends the newest 3 semantic `v*` tags
+- Universal rollback/version dropdown policy:
+- always includes `latest` and `stable` when available in registry
+- always appends newest `3 x v*` semantic tags
+- for `latest`/`stable` entries, UI label includes resolved version (example: `stable (v1.96.5)`)
+- Channel switch support:
+- selecting `stable`/`latest` and pressing `Update` switches container tracking channel
+- Rollback channel tracking behavior:
+- when container is on `stable` or `latest` and rollback target is a fixed `v*`, rollback applies that version but keeps original channel tag
+- when rollback target is explicitly `stable` or `latest`, container tracking changes to that selected channel
+- Bulk update UX:
+- Dockhand-style `Update all` button states (`pending`, `ready`, `empty`, `selected`)
+- manual row selection updates the button label/count live (`Update selected (N)`)
+- after `Check`, rows with `update available` are auto-selected
+- Transient update reconnect handling:
+- if UI sees `Failed to fetch` during update, it treats it as a reconnect event, waits briefly, and refreshes container status instead of showing hard failure
 - Theme selector: `Modern` / `Classic`.
 - Style selector: `Auto` / `Light` / `Dark`.
 - UI settings and rollback state persist in `/data`.
@@ -54,6 +66,7 @@ docker run --rm -p 8090:8090 \
 - `mcugDataPath` (default `/usb1/mcug-data`)
 - `mcugRootDir` (default `/usb1/containers/container-update-gui`)
 - `mcugHttpPort` (default `8090`)
+- `mcugVeth` (default `veth-mcug`)
 - `mcugApiUser` / `mcugApiPassword`
 
 2. Run helper:
@@ -74,6 +87,9 @@ UI endpoint:
 - Runtime is delivered as a single script: `/app/mcug.sh` (no Node.js runtime files required in repo).
 - `ROUTEROS_BASE_URL` is optional; if empty, the app auto-detects the container default gateway.
 - Docker Hub tag listing has a dedicated fallback to reliably include `v*` tags when `/v2/.../tags/list` is incomplete.
+- Registry tag listing also uses pagination (`Link rel=next`) for high-tag repositories.
+- RouterOS install script ensures NAT rule `mcug-gui` exists and is updated (create-or-update behavior).
+- `mcug-gui` NAT `to-addresses` is derived from the runtime `veth` container IP.
 - Persistent state (`settings.json`, `rollback-state.json`) lives in `/data` (recommended on USB storage).
 
 ## Trademark Notice

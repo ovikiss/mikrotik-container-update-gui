@@ -39,7 +39,7 @@
   - `mcug-gui` NAT rule is now create-or-update (ensures rule exists if missing)
   - NAT `to-addresses` derives from runtime `veth` container host IP
   - fixed runtime IP parsing to avoid prefix-form `to-addresses`
-  - added env key `VETH` to container env list
+  - removed redundant `VETH` env key (veth is managed directly by install script)
 
 ## v0.2 - 2026-05-18
 
