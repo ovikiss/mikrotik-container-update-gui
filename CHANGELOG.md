@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.1 - 2026-05-22
+
+- Safety guard for MCUG self-management:
+  - `update`/`rollback`/`backup` are blocked for `container-update-gui` from inside MCUG UI/API.
+  - prevents self-restart corruption scenarios during in-place container repull.
+- Update no-op protection:
+  - `update` is skipped when digest check reports already up-to-date and no channel switch is requested.
+  - avoids RouterOS same-version import edge cases on repeated update clicks.
+- UI behavior:
+  - MCUG row no longer exposes `Update`/`Rollback` actions.
+  - MCUG container is excluded from auto-selection and bulk update eligibility.
+
 ## v0.3 - 2026-05-18
 
 - Runtime migrated from Node.js to Python for lower container footprint.

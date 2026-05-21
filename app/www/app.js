@@ -271,6 +271,10 @@ function extractImageReference(imageRef) {
   return "latest";
 }
 
+function getContainerById(containerId) {
+  return state.containers.find((entry) => entry.id === containerId);
+}
+
 function isChannelSwitchPending(container, selectedTargetImageRef) {
   const selectedRef = extractImageReference(selectedTargetImageRef);
   if (selectedRef !== "latest" && selectedRef !== "stable") {
@@ -282,6 +286,7 @@ function isChannelSwitchPending(container, selectedTargetImageRef) {
 
 function isContainerUpdateEligible(container) {
   if (!container) return false;
+  if (container.isSelf) return false;
   const checkAvailable = state.checkById[container.id]?.state === "available";
   const selectedTarget = state.rollbackTargetById[container.id] || "";
   const channelSwitchPending = isChannelSwitchPending(container, selectedTarget);
@@ -289,7 +294,7 @@ function isContainerUpdateEligible(container) {
 }
 
 function availableUpdatesCount() {
-  return state.containers.filter((container) => state.checkById[container.id]?.state === "available").length;
+  return state.containers.filter((container) => !container.isSelf && state.checkById[container.id]?.state === "available").length;
 }
 
 function refreshBulkUpdateButton() {
@@ -408,7 +413,7 @@ function renderRows() {
     rollbackSelect.value = selectedTarget && rollbackOptions.some((entry) => entry.imageRef === selectedTarget)
       ? selectedTarget
       : "";
-    rollbackSelect.disabled = rollbackOptions.length === 0;
+    rollbackSelect.disabled = rollbackOptions.length === 0 || Boolean(container.isSelf);
     const rollbackButton = fragment.querySelector('[data-action="rollback"]');
     rollbackSelect.addEventListener("change", () => {
       state.rollbackTargetById[container.id] = rollbackSelect.value || "";
@@ -425,6 +430,12 @@ function renderRows() {
       btn.dataset.staticDisabled = "0";
 
       if (btn.dataset.action === "update") {
+        if (container.isSelf) {
+          btn.classList.add("hidden");
+          btn.dataset.staticDisabled = "1";
+          btn.title = "Self update is disabled in UI. Use install script to upgrade MCUG safely.";
+          return;
+        }
         const updateLocked = Boolean(state.updateLockedById[container.id]);
         const selectedTarget = state.rollbackTargetById[container.id] || "";
         const channelSwitchPending = isChannelSwitchPending(container, selectedTarget);
@@ -441,6 +452,12 @@ function renderRows() {
       }
 
       if (btn.dataset.action === "rollback") {
+        if (container.isSelf) {
+          btn.classList.add("hidden");
+          btn.dataset.staticDisabled = "1";
+          btn.title = "Self rollback is disabled in UI.";
+          return;
+        }
         const rollbackLocked = Boolean(state.rollbackLockedById[container.id]);
         btn.classList.toggle("hidden", rollbackLocked);
         if (rollbackLocked) {
@@ -485,12 +502,16 @@ function digestCheckToUiState(result) {
 
 function applyCheckResult(containerId, result) {
   state.checkById[containerId] = digestCheckToUiState(result);
-  state.selectedById[containerId] = state.checkById[containerId].state === "available";
+  const container = getContainerById(containerId);
+  if (container?.isSelf) {
+    state.selectedById[containerId] = false;
+  } else {
+    state.selectedById[containerId] = state.checkById[containerId].state === "available";
+  }
   delete state.updateLockedById[containerId];
   delete state.rollbackLockedById[containerId];
   const options = Array.isArray(result?.rollbackOptions) ? result.rollbackOptions : [];
   state.rollbackOptionsById[containerId] = options;
-  const container = state.containers.find((entry) => entry.id === containerId);
   const currentRef = extractImageReference(container?.image || "");
   const preferredCurrent = options.find((option) => extractImageReference(option.imageRef) === currentRef);
 

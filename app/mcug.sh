@@ -1159,6 +1159,13 @@ def run_single_action(action: str, container: Dict[str, Any], payload: Optional[
             "result": CLIENT.check_container_image(container),
         }
 
+    if action in ("backup", "update", "rollback") and bool(container.get("isSelf")):
+        raise ApiUserError(
+            "Self update/rollback is disabled in UI to avoid container restart corruption. Use install script for MCUG upgrades.",
+            status=409,
+            details={"action": action, "container": container.get("name")},
+        )
+
     if action == "backup":
         backup = save_rollback_point(container, strict=True, reason="manual")
         return {
@@ -1177,21 +1184,47 @@ def run_single_action(action: str, container: Dict[str, Any], payload: Optional[
 
     if action == "update":
         target_image_ref = str(request_payload.get("targetImageRef") or "").strip()
+        raw = container.get("raw") if isinstance(container.get("raw"), dict) else {}
+        current_image_ref = str(raw.get("remote-image") or container.get("image") or "").strip()
+        current_ref = ""
+        channel_switch_requested = False
+        target_ref = ""
+        try:
+            current_ref = str(parse_image_reference(current_image_ref).get("reference") or "").strip().lower()
+        except Exception:
+            current_ref = ""
+
         if target_image_ref:
-            raw = container.get("raw") if isinstance(container.get("raw"), dict) else {}
-            current_image_ref = str(raw.get("remote-image") or container.get("image") or "").strip()
-            try:
-                current_ref = str(parse_image_reference(current_image_ref).get("reference") or "").strip().lower()
-            except Exception:
-                current_ref = ""
             try:
                 target_ref = str(parse_image_reference(target_image_ref).get("reference") or "").strip().lower()
             except Exception:
                 target_ref = ""
 
             # Channel switch via Update button: stable <-> latest.
-            if target_ref in ("stable", "latest") and target_ref != current_ref:
+            channel_switch_requested = target_ref in ("stable", "latest") and target_ref != current_ref
+            if channel_switch_requested:
                 CLIENT.set_container_remote_image(container, target_image_ref)
+
+        # Guard against same-version update calls on RouterOS.
+        # They can return "skip importing same version" and leave unstable state on repeated attempts.
+        check_result = CLIENT.check_container_image(container)
+        if (
+            isinstance(check_result, dict)
+            and check_result.get("mode") == "digest-compare"
+            and check_result.get("upToDate") is True
+            and not channel_switch_requested
+        ):
+            return {
+                "ok": True,
+                "container": {"id": container["id"], "name": container["name"]},
+                "result": {
+                    "mode": "digest-compare",
+                    "upToDate": True,
+                    "noop": True,
+                    "message": "Container already up to date. Update skipped.",
+                    "imageRef": current_image_ref,
+                },
+            }
 
     result = CLIENT.run_container_action(action, container)
     response_payload: Dict[str, Any] = {

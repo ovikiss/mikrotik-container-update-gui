@@ -11,6 +11,9 @@ Current release: `v0.3` (see `CHANGELOG.md`).
 - `check` uses digest comparison (local vs registry).
 - `update` stores an automatic pre-update backup (`lastKnownGood`).
 - `rollback` uses persistent backup logic (without relying on RouterOS `/container/rollback`).
+- MCUG self-protection:
+- `container-update-gui` cannot `update`/`rollback`/`backup` itself from the same UI session
+- use `mikrotik/install.rsc` (or helper script) for MCUG upgrades
 - Universal rollback/version dropdown policy:
 - always includes `latest` and `stable` when available in registry
 - always appends newest `3 x v*` semantic tags
