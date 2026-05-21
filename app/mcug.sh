@@ -1024,10 +1024,8 @@ def run_version_rollback(container: Dict[str, Any], target_image_ref: str) -> Di
             "previousImage": previous_image,
         }
 
-    CLIENT.set_container_remote_image(container, pinned_target)
     try:
-        update_result = CLIENT.run_container_action("update", container)
-
+        CLIENT.set_container_remote_image(container, pinned_target)
         return {
             "mode": "version-rollback",
             "rollbackImage": target,
@@ -1036,7 +1034,10 @@ def run_version_rollback(container: Dict[str, Any], target_image_ref: str) -> Di
             "trackingImage": target,
             "trackingImageRestored": False,
             "trackingImageRestoreError": None,
-            "updateResult": update_result,
+            "updateResult": {
+                "mode": "set-remote-image",
+                "message": "Rollback target applied by setting remote-image (RouterOS auto-repull).",
+            },
         }
     except Exception as rollback_error:
         restore_result = None
@@ -1044,7 +1045,7 @@ def run_version_rollback(container: Dict[str, Any], target_image_ref: str) -> Di
         try:
             if previous_image:
                 CLIENT.set_container_remote_image(container, previous_image)
-                restore_result = CLIENT.run_container_action("update", container)
+                restore_result = {"mode": "set-remote-image"}
         except Exception as recovery_error:
             restore_error = str(recovery_error)
 
@@ -1173,7 +1174,9 @@ def run_single_action(action: str, container: Dict[str, Any], payload: Optional[
         except Exception:
             current_ref = ""
 
+        desired_image_ref = current_image_ref
         if target_image_ref:
+            desired_image_ref = target_image_ref
             try:
                 target_ref = str(parse_image_reference(target_image_ref).get("reference") or "").strip().lower()
             except Exception:
@@ -1208,7 +1211,7 @@ def run_single_action(action: str, container: Dict[str, Any], payload: Optional[
                 }
 
             if channel_switch_requested:
-                CLIENT.set_container_remote_image(container, target_image_ref)
+                desired_image_ref = target_image_ref
             elif target_up_to_date is True:
                 return {
                     "ok": True,
@@ -1222,15 +1225,19 @@ def run_single_action(action: str, container: Dict[str, Any], payload: Optional[
                     },
                 }
 
-        # Guard against same-version update calls on RouterOS.
-        # They can return "skip importing same version" and leave unstable state on repeated attempts.
-        check_result = CLIENT.check_container_image(container)
-        if (
-            isinstance(check_result, dict)
-            and check_result.get("mode") == "digest-compare"
-            and check_result.get("upToDate") is True
-            and not channel_switch_requested
-        ):
+        desired_up_to_date: Optional[bool] = None
+        desired_remote_digest = ""
+        try:
+            desired_digest = CLIENT.resolve_remote_config_digest(desired_image_ref, preferred_architecture)
+            desired_remote_digest = str(desired_digest.get("remoteConfigDigest") or "")
+            desired_normalized = str(desired_digest.get("normalizedRemoteConfigDigest") or "")
+            desired_up_to_date = bool(
+                normalized_local_image_id and desired_normalized and normalized_local_image_id == desired_normalized
+            )
+        except Exception:
+            desired_up_to_date = None
+
+        if desired_up_to_date is True:
             return {
                 "ok": True,
                 "container": {"id": container["id"], "name": container["name"]},
@@ -1240,10 +1247,22 @@ def run_single_action(action: str, container: Dict[str, Any], payload: Optional[
                     "noop": True,
                     "message": "Container already up to date. Update skipped.",
                     "imageRef": current_image_ref,
+                    "targetImageRef": desired_image_ref,
                 },
             }
 
-    result = CLIENT.run_container_action(action, container)
+        CLIENT.set_container_remote_image(container, desired_image_ref)
+        result = {
+            "mode": "set-remote-image",
+            "upToDate": False if desired_up_to_date is False else None,
+            "message": "Update triggered by setting remote-image (RouterOS auto-repull).",
+            "imageRef": current_image_ref,
+            "targetImageRef": desired_image_ref,
+            "targetRemoteDigest": desired_remote_digest or None,
+            "channelSwitch": bool(channel_switch_requested),
+        }
+    else:
+        result = CLIENT.run_container_action(action, container)
     response_payload: Dict[str, Any] = {
         "ok": True,
         "container": {"id": container["id"], "name": container["name"]},
