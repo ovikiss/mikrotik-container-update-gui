@@ -2,7 +2,7 @@
 
 Containerized Dockhand-style web UI for RouterOS container update and rollback management.
 
-Current release: `v0.3` (see `CHANGELOG.md`).
+Current release: `v0.3.1` (see `CHANGELOG.md`).
 
 ## Features
 - Auto-discovers all containers from RouterOS REST API.
