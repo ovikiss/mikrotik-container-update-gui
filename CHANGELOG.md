@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.1 - 2026-05-26
+
+- Hardened the container update and rollback lifecycle with graceful stop-and-start orchestration.
+- Prevent SQLite database locking on slow/embedded storage systems by enforcing explicit container stop, wait, and file sync delays before setting new images and starting up.
+
 ## v0.4.0 - 2026-05-26
 
 - Migrated backend completely from Python to Go for ultra-low container footprint.

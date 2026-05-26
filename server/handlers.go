@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ovikiss/mikrotik-container-update-gui/registry"
 	"github.com/ovikiss/mikrotik-container-update-gui/routeros"
@@ -628,7 +629,7 @@ func (s *Server) RunVersionRollback(ctx context.Context, container map[string]in
 	}
 	previousImage, _ := raw["remote-image"].(string)
 	if previousImage == "" {
-		previousImage, _ = container["image"].(string)
+		previousImage = container["image"].(string)
 	}
 	previousImage = strings.TrimSpace(previousImage)
 	arch, _ := raw["arch"].(string)
@@ -650,6 +651,37 @@ func (s *Server) RunVersionRollback(ctx context.Context, container map[string]in
 		}, nil
 	}
 
+	cID, _ := container["id"].(string)
+	status, _ := container["status"].(string)
+
+	// 1. Oprim containerul dacă rulează, pentru a evita coruperea SQLite din cauza repornirii bruște (SIGKILL)
+	if status == "running" {
+		log.Printf("[Rollback] Stopping container %s gracefully first...", cID)
+		s.RouterOsClient.StopContainer(ctx, container)
+		// Așteaptă până devine stopped (max 15s)
+		startWait := time.Now()
+		for time.Since(startWait) < 15*time.Second {
+			time.Sleep(1 * time.Second)
+			containers, listErr := s.RouterOsClient.ListContainers(ctx)
+			if listErr == nil {
+				for _, r := range containers {
+					norm := NormalizeContainer(r, s.SelfContainer, s.SelfImageHint)
+					if normID, _ := norm["id"].(string); normID == cID {
+						status, _ = norm["status"].(string)
+						break
+					}
+				}
+			}
+			if status == "stopped" {
+				break
+			}
+		}
+		// Așteptare suplimentară de 2 secunde pentru a elibera lock-urile de disc
+		time.Sleep(2 * time.Second)
+	}
+
+	// 2. Setăm noua imagine
+	log.Printf("[Rollback] Setting container %s remote-image to %s...", cID, pinnedTarget)
 	_, rollbackErr := s.RouterOsClient.SetContainerRemoteImage(ctx, container, pinnedTarget)
 	if rollbackErr != nil {
 		// Restore previous image
@@ -683,12 +715,22 @@ func (s *Server) RunVersionRollback(ctx context.Context, container map[string]in
 			details["restoreError"] = restoreErrorStr
 		}
 
+		// Repornim totuși vechiul container dacă a fost oprit
+		s.RouterOsClient.StartContainer(ctx, container)
+
 		return nil, &ApiUserError{
 			Message: friendlyMsg,
 			Status:  http.StatusBadRequest,
 			Details: details,
 		}
 	}
+
+	// Așteptare 2 secunde înainte de a porni, permițând RouterOS să proceseze metadatele
+	time.Sleep(2 * time.Second)
+
+	// 3. Pornim containerul (declanșează pull & start în RouterOS)
+	log.Printf("[Rollback] Starting container %s...", cID)
+	_, _ = s.RouterOsClient.StartContainer(ctx, container)
 
 	return map[string]interface{}{
 		"mode":                     "version-rollback",
@@ -787,15 +829,55 @@ func (s *Server) RunVersionUpdate(ctx context.Context, container map[string]inte
 		}, nil
 	}
 
+	cID, _ := container["id"].(string)
+	status, _ := container["status"].(string)
+
+	// 1. Oprim containerul dacă rulează, pentru a evita coruperea SQLite din cauza repornirii bruște (SIGKILL)
+	if status == "running" {
+		log.Printf("[Update] Stopping container %s gracefully first...", cID)
+		s.RouterOsClient.StopContainer(ctx, container)
+		// Așteaptă până devine stopped (max 15s)
+		startWait := time.Now()
+		for time.Since(startWait) < 15*time.Second {
+			time.Sleep(1 * time.Second)
+			containers, listErr := s.RouterOsClient.ListContainers(ctx)
+			if listErr == nil {
+				for _, r := range containers {
+					norm := NormalizeContainer(r, s.SelfContainer, s.SelfImageHint)
+					if normID, _ := norm["id"].(string); normID == cID {
+						status, _ = norm["status"].(string)
+						break
+					}
+				}
+			}
+			if status == "stopped" {
+				break
+			}
+		}
+		// Așteptare suplimentară de 2 secunde pentru a elibera lock-urile de disc
+		time.Sleep(2 * time.Second)
+	}
+
 	// Salvează backup pre-update
 	if rollbackRef, err := s.RegistryClient.ResolveRollbackImageReference(ctx, currentImageRef, arch); err == nil {
 		s.SettingsManager.SaveRollbackPoint(container, currentImageRef, rollbackRef.PinnedImage, rollbackRef.ManifestDigest, "update")
 	}
 
+	// 2. Setăm noua imagine
+	log.Printf("[Update] Setting container %s remote-image to %s...", cID, desiredImageRef)
 	_, err := s.RouterOsClient.SetContainerRemoteImage(ctx, container, desiredImageRef)
 	if err != nil {
+		// Repornim totuși vechiul container dacă a fost oprit și setarea a eșuat
+		s.RouterOsClient.StartContainer(ctx, container)
 		return nil, err
 	}
+
+	// Așteptare 2 secunde înainte de a porni, permițând RouterOS să proceseze metadatele
+	time.Sleep(2 * time.Second)
+
+	// 3. Pornim containerul (declanșează pull & start în RouterOS)
+	log.Printf("[Update] Starting container %s...", cID)
+	_, _ = s.RouterOsClient.StartContainer(ctx, container)
 
 	res := map[string]interface{}{
 		"mode":           "set-remote-image",

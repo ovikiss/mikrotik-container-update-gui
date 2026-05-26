@@ -416,3 +416,29 @@ func (c *RouterOsClient) SetContainerRemoteImage(ctx context.Context, container 
 
 	return c.request(ctx, "/container/set", "POST", body, nil)
 }
+
+func (c *RouterOsClient) StopContainer(ctx context.Context, container map[string]interface{}) (interface{}, error) {
+	idVal, _ := container["id"].(string)
+	if idVal == "" {
+		return nil, errors.New("missing container id for stop")
+	}
+
+	body := map[string]interface{}{
+		c.TargetField: idVal,
+	}
+
+	return c.request(ctx, "/container/stop", "POST", body, nil)
+}
+
+func (c *RouterOsClient) StartContainer(ctx context.Context, container map[string]interface{}) (interface{}, error) {
+	idVal, _ := container["id"].(string)
+	if idVal == "" {
+		return nil, errors.New("missing container id for start")
+	}
+
+	body := map[string]interface{}{
+		c.TargetField: idVal,
+	}
+
+	return c.request(ctx, "/container/start", "POST", body, nil)
+}
