@@ -275,6 +275,7 @@ func (s *Server) handleBulkAction(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		ContainerIDs    []string               `json:"containerIds"`
 		RollbackTargets map[string]interface{} `json:"rollbackTargets"`
+		UpdateTargets   map[string]interface{} `json:"updateTargets"`
 	}
 	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
 		JSONResponse(w, http.StatusBadRequest, map[string]interface{}{
@@ -312,6 +313,11 @@ func (s *Server) handleBulkAction(w http.ResponseWriter, r *http.Request) {
 		cName, _ := container["name"].(string)
 
 		singlePayload := make(map[string]interface{})
+		if action == "update" && payload.UpdateTargets != nil {
+			if targetImage, ok := payload.UpdateTargets[cID].(string); ok {
+				singlePayload["targetImageRef"] = targetImage
+			}
+		}
 		if action == "rollback" && payload.RollbackTargets != nil {
 			if targetImage, ok := payload.RollbackTargets[cID].(string); ok {
 				singlePayload["targetImageRef"] = targetImage
@@ -329,17 +335,16 @@ func (s *Server) handleBulkAction(w http.ResponseWriter, r *http.Request) {
 				"error":     err.Error(),
 			}
 
-			if errors.As(err, &apiErr) {
-				row["details"] = apiErr.Details
-			} else if errors.As(err, &reqErr) {
-				row["details"] = reqErr.Details
+				if errors.As(err, &apiErr) {
+					row["details"] = apiErr.Details
+				} else if errors.As(err, &reqErr) {
+					row["details"] = reqErr.Details
+				}
+				results = append(results, row)
+			} else {
+				successCount++
+				results = append(results, res)
 			}
-			results = append(results) // Wait, in Go we need to append row!
-			results = append(results, row)
-		} else {
-			successCount++
-			results = append(results, res)
-		}
 	}
 
 	failedCount := len(targets) - successCount
@@ -750,9 +755,14 @@ func (s *Server) RunVersionUpdate(ctx context.Context, container map[string]inte
 	if raw == nil {
 		raw = make(map[string]interface{})
 	}
-	currentImageRef := strings.TrimSpace(raw["remote-image"].(string))
+	currentImageRef := ""
+	if currentRaw, ok := raw["remote-image"].(string); ok {
+		currentImageRef = strings.TrimSpace(currentRaw)
+	}
 	if currentImageRef == "" {
-		currentImageRef = strings.TrimSpace(container["image"].(string))
+		if containerImage, ok := container["image"].(string); ok {
+			currentImageRef = strings.TrimSpace(containerImage)
+		}
 	}
 	localImageID, _ := raw["image-id"].(string)
 	normalizedLocalImageID := registry.NormalizeDigest(localImageID)

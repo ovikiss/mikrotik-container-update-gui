@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.4 - 2026-05-26
+
+- Fixed bulk `Update selected/all` to honor each row's selected dropdown target (`stable`/`latest`/`v*`) in the same way as single-row update.
+- Fixed backend bulk action result handling to avoid malformed append behavior and return proper per-container error rows.
+- Hardened update image reference parsing to avoid panic when RouterOS container fields are missing/unexpected.
+
 ## v0.4.3 - 2026-05-26
 
 - **Fix: container exits with status 127 after update/rollback.**

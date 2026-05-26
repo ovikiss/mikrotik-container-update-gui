@@ -675,6 +675,16 @@ async function runBulkAction(action) {
 
     appendLog(`Running bulk '${action}' on ${scopeLabel}`);
     const rollbackTargets = {};
+    const updateTargets = {};
+    if (action === "update") {
+      ids.forEach((containerId) => {
+        const container = state.containers.find((entry) => entry.id === containerId);
+        const selectedTarget = state.rollbackTargetById[containerId] || "";
+        if (isChannelSwitchPending(container, selectedTarget)) {
+          updateTargets[containerId] = selectedTarget;
+        }
+      });
+    }
     if (action === "rollback") {
       ids.forEach((containerId) => {
         rollbackTargets[containerId] = state.rollbackTargetById[containerId];
@@ -682,7 +692,7 @@ async function runBulkAction(action) {
     }
     const result = await apiRequest(`/api/containers/actions/${action}`, {
       method: "POST",
-      body: JSON.stringify({ containerIds: ids, rollbackTargets })
+      body: JSON.stringify({ containerIds: ids, rollbackTargets, updateTargets })
     });
 
     appendLog(
