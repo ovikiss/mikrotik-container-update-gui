@@ -2,7 +2,7 @@
 
 Containerized Dockhand-style web UI for RouterOS container update and rollback management.
 
-Current release: `v0.3.1` (see `CHANGELOG.md`).
+Current release: `v0.4.0` (see `CHANGELOG.md`).
 
 ## Features
 - Auto-discovers all containers from RouterOS REST API.
@@ -34,13 +34,12 @@ Current release: `v0.3.1` (see `CHANGELOG.md`).
 - UI settings and rollback state persist in `/data`.
 
 ## Repository Structure
-- `app/mcug.sh` - runtime entrypoint (single-script runtime, embedded Python).
+- `main.go` - Entrypoint for Go backend (serves API and embeds `app/www/*` assets).
 - `app/www/index.html` - UI shell.
 - `app/www/app.js` - frontend actions, dropdowns, and settings persistence.
 - `app/www/styles-modern.css` - Modern theme.
 - `app/www/styles-classic.css` - Classic theme.
 - `app/www/images/ui/*.svg` - UI icons.
-- `app/settings.json` - default app settings.
 - `mikrotik/install.rsc` - RouterOS install/deploy script.
 - `scripts/install-to-router.sh` - helper for build/push and router import.
 - `.github/workflows/ci.yml` - syntax and Docker build checks.
@@ -87,7 +86,7 @@ UI endpoint:
 - `http://<router-lan-ip>:8090/`
 
 ## Notes
-- Runtime is delivered as a single script: `/app/mcug.sh` (no Node.js runtime files required in repo).
+- Runtime is delivered as a single compiled Go binary (no external runtime files required, static files embedded).
 - `ROUTEROS_BASE_URL` is optional; if empty, the app auto-detects the container default gateway.
 - Docker Hub tag listing has a dedicated fallback to reliably include `v*` tags when `/v2/.../tags/list` is incomplete.
 - Registry tag listing also uses pagination (`Link rel=next`) for high-tag repositories.

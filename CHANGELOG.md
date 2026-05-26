@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.0 - 2026-05-26
+
+- Migrated backend completely from Python to Go for ultra-low container footprint.
+- Zero external Go dependencies (standard library only) and no external Python runtime required.
+- Native asset embedding using `go:embed` to package static assets (`app/www/`) inside a single Go binary.
+- RAM usage reduced by ~6x (from ~25MB to **~3-5MB**), freeing valuable resources on MikroTik devices.
+- Image size reduced by ~5x (from ~75MB to **~15MB**), saving storage space.
+- Fully compatible REST API endpoints and settings schema, ensuring 100% transparent frontend integration.
+
 ## v0.3.1 - 2026-05-22
 
 - Safety guard for MCUG self-management:
