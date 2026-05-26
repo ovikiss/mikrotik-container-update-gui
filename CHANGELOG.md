@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.4.3 - 2026-05-26
+
+- **Fix: container exits with status 127 after update/rollback.**
+  The previous implementation issued a `/container/start` command 2 seconds after changing
+  `remote-image`, racing against RouterOS's image pull. If the pull had not finished, RouterOS
+  started the container with an incomplete filesystem, causing the entrypoint binary to be
+  missing and the container to immediately exit with code 127.
+- Replaced the naive 2-second delay with a proper `waitForPullThenStart` helper that:
+  1. Triggers `start` to begin the RouterOS pull pipeline.
+  2. Polls container status for up to 10 seconds waiting for the `extracting`/`pulling` state.
+  3. Once extracting, polls every 2 seconds until the container leaves the extracting state
+     (up to 5 minutes for large images).
+  4. Issues a final `start` only after the image is fully extracted.
+- Applied to both `update` and `rollback` code paths.
+
 ## v0.4.2 - 2026-05-26
 
 - Fix CI/CD and Docker build failure by setting Go version compatibility in `go.mod` to Go 1.22 (aligning with build environment).

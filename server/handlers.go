@@ -725,12 +725,9 @@ func (s *Server) RunVersionRollback(ctx context.Context, container map[string]in
 		}
 	}
 
-	// Așteptare 2 secunde înainte de a porni, permițând RouterOS să proceseze metadatele
-	time.Sleep(2 * time.Second)
-
-	// 3. Pornim containerul (declanșează pull & start în RouterOS)
-	log.Printf("[Rollback] Starting container %s...", cID)
-	_, _ = s.RouterOsClient.StartContainer(ctx, container)
+	// 3. Așteptăm pull-ul imaginii noi, apoi pornim containerul
+	log.Printf("[Rollback] Waiting for RouterOS to pull image for container %s...", cID)
+	s.waitForPullThenStart(ctx, cID, container)
 
 	return map[string]interface{}{
 		"mode":                     "version-rollback",
@@ -872,12 +869,9 @@ func (s *Server) RunVersionUpdate(ctx context.Context, container map[string]inte
 		return nil, err
 	}
 
-	// Așteptare 2 secunde înainte de a porni, permițând RouterOS să proceseze metadatele
-	time.Sleep(2 * time.Second)
-
-	// 3. Pornim containerul (declanșează pull & start în RouterOS)
-	log.Printf("[Update] Starting container %s...", cID)
-	_, _ = s.RouterOsClient.StartContainer(ctx, container)
+	// 3. Așteptăm pull-ul imaginii noi, apoi pornim containerul
+	log.Printf("[Update] Waiting for RouterOS to pull image for container %s...", cID)
+	s.waitForPullThenStart(ctx, cID, container)
 
 	res := map[string]interface{}{
 		"mode":           "set-remote-image",
@@ -898,4 +892,76 @@ func (s *Server) RunVersionUpdate(ctx context.Context, container map[string]inte
 	}
 
 	return res, nil
+}
+
+// waitForPullThenStart așteaptă ca RouterOS să facă pull la imaginea nouă (monitorizând starea
+// "extracting"), și abia după aceea pornește containerul. Previne status 127 cauzat de
+// pornirea prematură a containerului înainte ca filesystem-ul imaginii să fie complet extras.
+func (s *Server) waitForPullThenStart(ctx context.Context, cID string, container map[string]interface{}) {
+	// Pas 1: dăm start să declanșăm pull-ul în RouterOS (se va opri singur dacă imaginea nu e gata)
+	// Așteptăm 2s pentru ca RouterOS să proceseze set-ul de remote-image
+	time.Sleep(2 * time.Second)
+
+	// Pas 2: declanșăm start – RouterOS va face pull automat dacă imaginea s-a schimbat
+	_, _ = s.RouterOsClient.StartContainer(ctx, container)
+
+	// Pas 3: așteptăm să intre în "extracting" (max 10s; unele versiuni RouterOS fac pull la start)
+	extracting := false
+	waitForExtracting := time.Now()
+	for time.Since(waitForExtracting) < 10*time.Second {
+		time.Sleep(1 * time.Second)
+		cs, err := s.RouterOsClient.ListContainers(ctx)
+		if err != nil {
+			continue
+		}
+		for _, r := range cs {
+			norm := NormalizeContainer(r, s.SelfContainer, s.SelfImageHint)
+			if normID, _ := norm["id"].(string); normID == cID {
+				st, _ := norm["status"].(string)
+				if st == "extracting" || st == "pulling" {
+					extracting = true
+					log.Printf("[Pull] Container %s is extracting new image...", cID)
+				}
+				break
+			}
+		}
+		if extracting {
+			break
+		}
+	}
+
+	if !extracting {
+		// Nu a intrat în extracting – fie a pornit deja cu imaginea curentă (nu a trebuit pull),
+		// fie RouterOS nu raportează acest status. Returnăm.
+		log.Printf("[Pull] Container %s did not enter extracting state (may already be up-to-date or pull is implicit). Proceeding.", cID)
+		return
+	}
+
+	// Pas 4: așteptăm să iasă din "extracting" (max 5 minute)
+	waitForDone := time.Now()
+	for time.Since(waitForDone) < 5*time.Minute {
+		time.Sleep(2 * time.Second)
+		cs, err := s.RouterOsClient.ListContainers(ctx)
+		if err != nil {
+			continue
+		}
+		currentStatus := ""
+		for _, r := range cs {
+			norm := NormalizeContainer(r, s.SelfContainer, s.SelfImageHint)
+			if normID, _ := norm["id"].(string); normID == cID {
+				currentStatus, _ = norm["status"].(string)
+				break
+			}
+		}
+		if currentStatus != "extracting" && currentStatus != "pulling" {
+			log.Printf("[Pull] Container %s finished extracting (status=%s). Issuing start...", cID, currentStatus)
+			break
+		}
+		log.Printf("[Pull] Container %s still extracting (%ds elapsed)...", cID, int(time.Since(waitForDone).Seconds()))
+	}
+
+	// Pas 5: pornim containerul după pull
+	time.Sleep(1 * time.Second)
+	log.Printf("[Pull] Starting container %s after successful pull.", cID)
+	_, _ = s.RouterOsClient.StartContainer(ctx, container)
 }
