@@ -470,9 +470,9 @@ func (s *Server) RunSingleAction(ctx context.Context, action string, container m
 		}, nil
 	}
 
-	if (action == "backup" || action == "update" || action == "rollback") && isSelf {
+	if (action == "backup" || action == "rollback") && isSelf {
 		return nil, &ApiUserError{
-			Message: "Self update/rollback is disabled in UI to avoid container restart corruption. Use install script for MCUG upgrades.",
+			Message: "Self backup/rollback is disabled in UI to avoid container restart corruption.",
 			Status:  http.StatusConflict,
 			Details: map[string]interface{}{"action": action, "container": containerName},
 		}

@@ -430,12 +430,6 @@ function renderRows() {
       btn.dataset.staticDisabled = "0";
 
       if (btn.dataset.action === "update") {
-        if (container.isSelf) {
-          btn.classList.add("hidden");
-          btn.dataset.staticDisabled = "1";
-          btn.title = "Self update is disabled in UI. Use install script to upgrade MCUG safely.";
-          return;
-        }
         const updateLocked = Boolean(state.updateLockedById[container.id]);
         const selectedTarget = state.rollbackTargetById[container.id] || "";
         const channelSwitchPending = isChannelSwitchPending(container, selectedTarget);

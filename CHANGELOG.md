@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.5 - 2026-05-26
+
+- Enabled `Update` action for `container-update-gui` (self container) in UI.
+- Removed backend block for self `update`; self `backup` and `rollback` remain blocked for safety.
+- Kept existing one-click lock behavior, so `Update` button hides after click until next `Check`.
+
 ## v0.4.4 - 2026-05-26
 
 - Fixed bulk `Update selected/all` to honor each row's selected dropdown target (`stable`/`latest`/`v*`) in the same way as single-row update.
