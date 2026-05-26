@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.2 - 2026-05-26
+
+- Fix CI/CD and Docker build failure by setting Go version compatibility in `go.mod` to Go 1.22 (aligning with build environment).
+
 ## v0.4.1 - 2026-05-26
 
 - Hardened the container update and rollback lifecycle with graceful stop-and-start orchestration.
