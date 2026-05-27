@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.4.9 - 2026-05-27
+
+- **Fix: incorrect container status detection during update/pull.**
+  RouterOS REST API returns `"downloading/extracting": "true"` and `"stopped": "true"` properties instead of a `"status"` key. Because of this, the extraction wait loop was immediately breaking after 2 seconds (falling back to `"unknown"` status), triggering `/container/start` prematurely while extraction was still in progress.
+- **Improved status mapping:**
+  - Added detection of the `"downloading/extracting"` field to map status to `"extracting"`.
+  - Added detection of the `"stopped"` field to map status to `"stopped"`.
+- **Improved UI and extraction waiting:**
+  - The UI now correctly shows the `"extracting"` status in real-time during image pull.
+  - The graceful stop wait check is now extremely fast and doesn't timeout since the `"stopped"` status is parsed instantly.
+  - The Go update process now reliably waits for extraction to finish before calling `/container/start`.
+
 ## v0.4.8 - 2026-05-27
 
 - **Fix: container disappears after update (add fails silently with wrong payload).**

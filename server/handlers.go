@@ -419,12 +419,18 @@ func NormalizeContainer(raw map[string]interface{}, selfContainerName string, se
 	status := "unknown"
 	runningRaw := fmt.Sprintf("%v", raw["running"])
 	runningClean := strings.ToLower(strings.TrimSpace(runningRaw))
+	stoppedRaw := fmt.Sprintf("%v", raw["stopped"])
+	stoppedClean := strings.ToLower(strings.TrimSpace(stoppedRaw))
+	extractingRaw := fmt.Sprintf("%v", raw["downloading/extracting"])
+	extractingClean := strings.ToLower(strings.TrimSpace(extractingRaw))
 
 	if val, ok := raw["status"].(string); ok && val != "" {
 		status = val
+	} else if extractingClean == "true" || extractingClean == "1" || extractingClean == "yes" {
+		status = "extracting"
 	} else if runningClean == "true" || runningClean == "1" || runningClean == "yes" {
 		status = "running"
-	} else if runningClean == "false" || runningClean == "0" || runningClean == "no" {
+	} else if stoppedClean == "true" || stoppedClean == "1" || stoppedClean == "yes" || runningClean == "false" || runningClean == "0" || runningClean == "no" {
 		status = "stopped"
 	}
 
