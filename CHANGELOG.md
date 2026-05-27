@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.4.6 - 2026-05-27
+
+- **Fix: update/rollback installs old image when tag stays the same (e.g. `latest`).**
+  RouterOS caches container images locally and does NOT re-pull from the registry
+  when `remote-image` keeps the same tag. The previous `set remote-image + start`
+  approach just restarted the container with the cached (old) filesystem.
+- Replaced the update/rollback mechanism with **force-repull via remove + add**:
+  1. Read the full container config from RouterOS before touching anything.
+  2. Stop the container gracefully (max 15s + 2s flush for SQLite safety).
+  3. Remove the container (with retries, up to 10 attempts).
+  4. Re-add the container with the same config + new `remote-image` → RouterOS
+     is forced to do a fresh pull from the registry.
+  5. Poll until the `extracting` state finishes (up to 5 min for large images).
+  6. Start the container only after the new image is fully written to disk.
+- Added `RemoveContainer`, `GetContainerConfig`, and `AddContainer` methods
+  to the RouterOS REST client.
+- Applied to both `update` and `rollback` code paths.
+
 ## v0.4.5 - 2026-05-26
 
 - Enabled `Update` action for `container-update-gui` (self container) in UI.
