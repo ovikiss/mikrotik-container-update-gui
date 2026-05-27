@@ -442,3 +442,40 @@ func (c *RouterOsClient) StartContainer(ctx context.Context, container map[strin
 
 	return c.request(ctx, "/container/start", "POST", body, nil)
 }
+
+func (c *RouterOsClient) RemoveContainer(ctx context.Context, container map[string]interface{}) error {
+	idVal, _ := container["id"].(string)
+	if idVal == "" {
+		return errors.New("missing container id for remove")
+	}
+
+	body := map[string]interface{}{
+		c.TargetField: idVal,
+	}
+
+	_, err := c.request(ctx, "/container/remove", "POST", body, nil)
+	return err
+}
+
+// GetContainerConfig fetches the full raw config for a container by ID from RouterOS.
+func (c *RouterOsClient) GetContainerConfig(ctx context.Context, idVal string) (map[string]interface{}, error) {
+	if idVal == "" {
+		return nil, errors.New("missing container id for GetContainerConfig")
+	}
+
+	data, err := c.request(ctx, "/container/"+url.QueryEscape(idVal), "GET", nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if m, ok := data.(map[string]interface{}); ok {
+		return m, nil
+	}
+	return nil, fmt.Errorf("unexpected response type for container config")
+}
+
+// AddContainer adds a new container with the provided config fields.
+// This is used for force-repull: remove the old container and re-add with the same config + new image.
+func (c *RouterOsClient) AddContainer(ctx context.Context, cfg map[string]interface{}) (interface{}, error) {
+	return c.request(ctx, "/container/add", "POST", cfg, nil)
+}

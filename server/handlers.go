@@ -730,9 +730,15 @@ func (s *Server) RunVersionRollback(ctx context.Context, container map[string]in
 		}
 	}
 
-	// 3. Așteptăm pull-ul imaginii noi, apoi pornim containerul
-	log.Printf("[Rollback] Waiting for RouterOS to pull image for container %s...", cID)
-	s.waitForPullThenStart(ctx, cID, container)
+	// 3. Forțăm pull prin remove + add (RouterOS nu repull dacă tag-ul e același)
+	log.Printf("[Rollback] Force-repulling container %s with image %s...", cID, pinnedTarget)
+	if repullErr := s.forceRepullContainer(ctx, container, pinnedTarget); repullErr != nil {
+		return nil, &ApiUserError{
+			Message: "Rollback failed during force-repull: " + repullErr.Error(),
+			Status:  http.StatusInternalServerError,
+			Details: map[string]interface{}{"container": cID, "image": pinnedTarget},
+		}
+	}
 
 	return map[string]interface{}{
 		"mode":                     "version-rollback",
@@ -743,8 +749,8 @@ func (s *Server) RunVersionRollback(ctx context.Context, container map[string]in
 		"trackingImageRestored":    false,
 		"trackingImageRestoreError": nil,
 		"updateResult": map[string]string{
-			"mode":    "set-remote-image",
-			"message": "Rollback target applied by setting remote-image (RouterOS auto-repull).",
+			"mode":    "force-repull",
+			"message": "Rollback applied via remove+add to force RouterOS image pull.",
 		},
 	}, nil
 }
@@ -837,55 +843,25 @@ func (s *Server) RunVersionUpdate(ctx context.Context, container map[string]inte
 	}
 
 	cID, _ := container["id"].(string)
-	status, _ := container["status"].(string)
-
-	// 1. Oprim containerul dacă rulează, pentru a evita coruperea SQLite din cauza repornirii bruște (SIGKILL)
-	if status == "running" {
-		log.Printf("[Update] Stopping container %s gracefully first...", cID)
-		s.RouterOsClient.StopContainer(ctx, container)
-		// Așteaptă până devine stopped (max 15s)
-		startWait := time.Now()
-		for time.Since(startWait) < 15*time.Second {
-			time.Sleep(1 * time.Second)
-			containers, listErr := s.RouterOsClient.ListContainers(ctx)
-			if listErr == nil {
-				for _, r := range containers {
-					norm := NormalizeContainer(r, s.SelfContainer, s.SelfImageHint)
-					if normID, _ := norm["id"].(string); normID == cID {
-						status, _ = norm["status"].(string)
-						break
-					}
-				}
-			}
-			if status == "stopped" {
-				break
-			}
-		}
-		// Așteptare suplimentară de 2 secunde pentru a elibera lock-urile de disc
-		time.Sleep(2 * time.Second)
-	}
 
 	// Salvează backup pre-update
 	if rollbackRef, err := s.RegistryClient.ResolveRollbackImageReference(ctx, currentImageRef, arch); err == nil {
 		s.SettingsManager.SaveRollbackPoint(container, currentImageRef, rollbackRef.PinnedImage, rollbackRef.ManifestDigest, "update")
 	}
 
-	// 2. Setăm noua imagine
-	log.Printf("[Update] Setting container %s remote-image to %s...", cID, desiredImageRef)
-	_, err := s.RouterOsClient.SetContainerRemoteImage(ctx, container, desiredImageRef)
-	if err != nil {
-		// Repornim totuși vechiul container dacă a fost oprit și setarea a eșuat
-		s.RouterOsClient.StartContainer(ctx, container)
-		return nil, err
+	// Forțăm pull prin remove + add (RouterOS nu repull dacă tag-ul e același)
+	log.Printf("[Update] Force-repulling container %s with image %s...", cID, desiredImageRef)
+	if err := s.forceRepullContainer(ctx, container, desiredImageRef); err != nil {
+		return nil, &ApiUserError{
+			Message: "Update failed during force-repull: " + err.Error(),
+			Status:  http.StatusInternalServerError,
+			Details: map[string]interface{}{"container": cID, "image": desiredImageRef},
+		}
 	}
 
-	// 3. Așteptăm pull-ul imaginii noi, apoi pornim containerul
-	log.Printf("[Update] Waiting for RouterOS to pull image for container %s...", cID)
-	s.waitForPullThenStart(ctx, cID, container)
-
 	res := map[string]interface{}{
-		"mode":           "set-remote-image",
-		"message":        "Update triggered by setting remote-image (RouterOS auto-repull).",
+		"mode":           "force-repull",
+		"message":        "Update applied via remove+add to force RouterOS image pull.",
 		"imageRef":       currentImageRef,
 		"targetImageRef": desiredImageRef,
 		"channelSwitch":  channelSwitchRequested,
@@ -904,74 +880,160 @@ func (s *Server) RunVersionUpdate(ctx context.Context, container map[string]inte
 	return res, nil
 }
 
-// waitForPullThenStart așteaptă ca RouterOS să facă pull la imaginea nouă (monitorizând starea
-// "extracting"), și abia după aceea pornește containerul. Previne status 127 cauzat de
-// pornirea prematură a containerului înainte ca filesystem-ul imaginii să fie complet extras.
-func (s *Server) waitForPullThenStart(ctx context.Context, cID string, container map[string]interface{}) {
-	// Pas 1: dăm start să declanșăm pull-ul în RouterOS (se va opri singur dacă imaginea nu e gata)
-	// Așteptăm 2s pentru ca RouterOS să proceseze set-ul de remote-image
-	time.Sleep(2 * time.Second)
+// forceRepullContainer forțează RouterOS să facă pull la o nouă imagine prin strategia
+// remove + add. Aceasta este singura metodă fiabilă: RouterOS nu face pull dacă tag-ul
+// remote-image rămâne același (ex. "latest") — folosește imaginea din cache.
+//
+// Flux:
+//  1. Citește config-ul complet al containerului din RouterOS
+//  2. Oprește containerul (graceful, max 15s)
+//  3. Șterge containerul (eliberează filesystem-ul vechi)
+//  4. Re-adaugă containerul cu noua imagine → RouterOS face pull automat
+//  5. Așteaptă finalizarea extragerii (max 5 min)
+//  6. Pornește containerul
+func (s *Server) forceRepullContainer(ctx context.Context, container map[string]interface{}, newImage string) error {
+	cID, _ := container["id"].(string)
+	containerName, _ := container["name"].(string)
 
-	// Pas 2: declanșăm start – RouterOS va face pull automat dacă imaginea s-a schimbat
-	_, _ = s.RouterOsClient.StartContainer(ctx, container)
+	// Pas 1: citim config-ul complet pentru a putea recrea containerul
+	log.Printf("[Repull] Reading full config for container %s (%s)...", containerName, cID)
+	rawCfg, err := s.RouterOsClient.GetContainerConfig(ctx, cID)
+	if err != nil {
+		return fmt.Errorf("failed to read container config: %w", err)
+	}
 
-	// Pas 3: așteptăm să intre în "extracting" (max 10s; unele versiuni RouterOS fac pull la start)
-	extracting := false
-	waitForExtracting := time.Now()
-	for time.Since(waitForExtracting) < 10*time.Second {
+	// Pas 2: oprire graceful
+	log.Printf("[Repull] Stopping container %s gracefully...", containerName)
+	s.RouterOsClient.StopContainer(ctx, container)
+	stopStart := time.Now()
+	for time.Since(stopStart) < 15*time.Second {
 		time.Sleep(1 * time.Second)
-		cs, err := s.RouterOsClient.ListContainers(ctx)
-		if err != nil {
+		cs, listErr := s.RouterOsClient.ListContainers(ctx)
+		if listErr != nil {
 			continue
 		}
+		stopped := false
 		for _, r := range cs {
 			norm := NormalizeContainer(r, s.SelfContainer, s.SelfImageHint)
 			if normID, _ := norm["id"].(string); normID == cID {
 				st, _ := norm["status"].(string)
-				if st == "extracting" || st == "pulling" {
-					extracting = true
-					log.Printf("[Pull] Container %s is extracting new image...", cID)
+				if st == "stopped" {
+					stopped = true
 				}
 				break
 			}
 		}
-		if extracting {
+		if stopped {
 			break
 		}
 	}
+	// extra delay pentru flush disc (SQLite etc.)
+	time.Sleep(2 * time.Second)
 
-	if !extracting {
-		// Nu a intrat în extracting – fie a pornit deja cu imaginea curentă (nu a trebuit pull),
-		// fie RouterOS nu raportează acest status. Returnăm.
-		log.Printf("[Pull] Container %s did not enter extracting state (may already be up-to-date or pull is implicit). Proceeding.", cID)
-		return
+	// Pas 3: ștergem containerul (cu retry pentru că RouterOS poate fi ocupat)
+	log.Printf("[Repull] Removing container %s...", containerName)
+	var removeErr error
+	for i := 0; i < 10; i++ {
+		removeErr = s.RouterOsClient.RemoveContainer(ctx, container)
+		if removeErr == nil {
+			break
+		}
+		log.Printf("[Repull] Remove attempt %d failed: %v — retrying...", i+1, removeErr)
+		time.Sleep(2 * time.Second)
+	}
+	if removeErr != nil {
+		return fmt.Errorf("failed to remove container after retries: %w", removeErr)
+	}
+	time.Sleep(1 * time.Second)
+
+	// Pas 4: construim payload pentru re-adăugare, păstrând toți parametrii vechi
+	// Câmpurile read-only / generate automat de RouterOS sunt excluse
+	skipFields := map[string]bool{
+		".id": true, "id": true, "number": true, "numbers": true,
+		"tag": true, "image-id": true, "layers": true,
+		"memory-current": true, "cpu-usage": true,
+		"memory-high": true,
+		"default-healthcheck-cmd": true,
+		"default-healthcheck-interval": true, "default-healthcheck-timeout": true,
+		"default-healthcheck-start-period": true, "default-healthcheck-start-interval": true,
+		"default-healthcheck-retries": true,
 	}
 
-	// Pas 4: așteptăm să iasă din "extracting" (max 5 minute)
-	waitForDone := time.Now()
-	for time.Since(waitForDone) < 5*time.Minute {
+	addPayload := make(map[string]interface{})
+	for k, v := range rawCfg {
+		if skipFields[k] {
+			continue
+		}
+		// Omitem câmpurile vide / false implicit
+		if vStr, ok := v.(string); ok && vStr == "" {
+			continue
+		}
+		if vBool, ok := v.(bool); ok && !vBool {
+			continue
+		}
+		addPayload[k] = v
+	}
+	// Suprascriem cu noua imagine
+	addPayload["remote-image"] = newImage
+
+	log.Printf("[Repull] Re-adding container %s with image %s...", containerName, newImage)
+	_, err = s.RouterOsClient.AddContainer(ctx, addPayload)
+	if err != nil {
+		return fmt.Errorf("failed to re-add container: %w", err)
+	}
+
+	// Pas 5: așteptăm să apară containerul și să intre în extracting
+	var newCID string
+	waitAppear := time.Now()
+	for time.Since(waitAppear) < 30*time.Second {
 		time.Sleep(2 * time.Second)
-		cs, err := s.RouterOsClient.ListContainers(ctx)
-		if err != nil {
+		cs, listErr := s.RouterOsClient.ListContainers(ctx)
+		if listErr != nil {
+			continue
+		}
+		for _, r := range cs {
+			norm := NormalizeContainer(r, s.SelfContainer, s.SelfImageHint)
+			if normName, _ := norm["name"].(string); normName == containerName {
+				newCID, _ = norm["id"].(string)
+				break
+			}
+		}
+		if newCID != "" {
+			break
+		}
+	}
+	if newCID == "" {
+		return fmt.Errorf("container %s not found after re-add", containerName)
+	}
+	log.Printf("[Repull] Container re-added as %s, waiting for image extraction...", newCID)
+
+	// Așteptăm extragerea imaginii (max 5 min)
+	waitDone := time.Now()
+	for time.Since(waitDone) < 5*time.Minute {
+		time.Sleep(2 * time.Second)
+		cs, listErr := s.RouterOsClient.ListContainers(ctx)
+		if listErr != nil {
 			continue
 		}
 		currentStatus := ""
 		for _, r := range cs {
 			norm := NormalizeContainer(r, s.SelfContainer, s.SelfImageHint)
-			if normID, _ := norm["id"].(string); normID == cID {
+			if normID, _ := norm["id"].(string); normID == newCID {
 				currentStatus, _ = norm["status"].(string)
 				break
 			}
 		}
-		if currentStatus != "extracting" && currentStatus != "pulling" {
-			log.Printf("[Pull] Container %s finished extracting (status=%s). Issuing start...", cID, currentStatus)
+		if currentStatus != "extracting" && currentStatus != "pulling" && currentStatus != "" {
+			log.Printf("[Repull] Container %s finished extracting (status=%s).", containerName, currentStatus)
 			break
 		}
-		log.Printf("[Pull] Container %s still extracting (%ds elapsed)...", cID, int(time.Since(waitForDone).Seconds()))
+		log.Printf("[Repull] Container %s still extracting (%ds)...", containerName, int(time.Since(waitDone).Seconds()))
 	}
 
-	// Pas 5: pornim containerul după pull
+	// Pas 6: pornim containerul
 	time.Sleep(1 * time.Second)
-	log.Printf("[Pull] Starting container %s after successful pull.", cID)
-	_, _ = s.RouterOsClient.StartContainer(ctx, container)
+	newContainerRef := map[string]interface{}{"id": newCID, "name": containerName}
+	log.Printf("[Repull] Starting container %s (%s)...", containerName, newCID)
+	_, _ = s.RouterOsClient.StartContainer(ctx, newContainerRef)
+	return nil
 }
