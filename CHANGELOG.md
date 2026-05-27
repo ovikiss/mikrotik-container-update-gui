@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.7 - 2026-05-27
+
+- **Fix: update hangs indefinitely (timeout) when reading container config.**
+  `GetContainerConfig` used `GET /container/*B1` which RouterOS REST API does
+  not support — the request hangs until timeout, blocking the entire update.
+- Replaced with an inline lookup via `ListContainers` (GET `/container`) which
+  works correctly, filtering the result by container ID.
+- Removed the broken `GetContainerConfig` method from the RouterOS client.
+
 ## v0.4.6 - 2026-05-27
 
 - **Fix: update/rollback installs old image when tag stays the same (e.g. `latest`).**
