@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.4.8 - 2026-05-27
+
+- **Fix: container disappears after update (add fails silently with wrong payload).**
+  RouterOS REST API returns many read-only and runtime fields that `/container/add`
+  simply rejects — causing the re-add step to fail and leaving the container deleted:
+  `os`, `arch`, `shm-size` (in bytes), `stop-signal` (as `"15-SIGTERM"`), `stop-time`,
+  `auto-restart-interval`, `memory-high`, `running`, `memory-current`, `cpu-usage`,
+  `tag`, `image-id`, `layers`, `layer-dir`, all `default-healthcheck-*` fields.
+- Replaced the "copy everything minus skip-list" approach with a **strict whitelist**
+  of only the fields `/container/add` actually accepts:
+  - Required: `name`, `remote-image`, `interface`
+  - Optional: `dns`, `root-dir`, `envlists`, `mountlists`, `workdir`, `hostname`,
+    `entrypoint`, `cmd`, `tmpfs`, `devices`, `cpu-list`, `hosts`, `domain-name`,
+    `start-on-boot`, `logging`, `check-certificate`
+- Added payload logging (`[Repull] Add payload`) to aid future debugging.
+
 ## v0.4.7 - 2026-05-27
 
 - **Fix: update hangs indefinitely (timeout) when reading container config.**
