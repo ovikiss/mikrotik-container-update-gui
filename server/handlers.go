@@ -963,35 +963,45 @@ func (s *Server) forceRepullContainer(ctx context.Context, container map[string]
 	}
 	time.Sleep(1 * time.Second)
 
-	// Pas 4: construim payload pentru re-adăugare, păstrând toți parametrii vechi
-	// Câmpurile read-only / generate automat de RouterOS sunt excluse
-	skipFields := map[string]bool{
-		".id": true, "id": true, "number": true, "numbers": true,
-		"tag": true, "image-id": true, "layers": true,
-		"memory-current": true, "cpu-usage": true,
-		"memory-high": true,
-		"default-healthcheck-cmd": true,
-		"default-healthcheck-interval": true, "default-healthcheck-timeout": true,
-		"default-healthcheck-start-period": true, "default-healthcheck-start-interval": true,
-		"default-healthcheck-retries": true,
+	// Pas 4: construim payload pentru re-adăugare folosind WHITELIST strict.
+	// RouterOS REST API returnează câmpuri read-only și de runtime (os, arch, shm-size în bytes,
+	// stop-signal ca "15-SIGTERM", memory-high, running, cpu-usage etc.) pe care
+	// /container/add NU le acceptă și le respinge. Folosim doar câmpurile cunoscute.
+	strField := func(key string) string {
+		v, _ := rawCfg[key].(string)
+		return v
 	}
 
-	addPayload := make(map[string]interface{})
-	for k, v := range rawCfg {
-		if skipFields[k] {
-			continue
-		}
-		// Omitem câmpurile vide / false implicit
-		if vStr, ok := v.(string); ok && vStr == "" {
-			continue
-		}
-		if vBool, ok := v.(bool); ok && !vBool {
-			continue
-		}
-		addPayload[k] = v
+	addPayload := map[string]interface{}{
+		"name":         containerName,
+		"remote-image": newImage,
+		"interface":    strField("interface"),
 	}
-	// Suprascriem cu noua imagine
+
+	// Câmpuri opționale — adăugate doar dacă sunt non-goale
+	for _, f := range []string{"dns", "root-dir", "envlists", "mountlists", "workdir",
+		"hostname", "entrypoint", "cmd", "tmpfs", "devices", "cpu-list", "hosts", "domain-name"} {
+		if v := strField(f); v != "" {
+			addPayload[f] = v
+		}
+	}
+
+	// Câmpuri boolean (vin ca string "true"/"false" din REST API)
+	if v := strField("start-on-boot"); v != "" {
+		addPayload["start-on-boot"] = v
+	}
+	if v := strField("logging"); v != "" {
+		addPayload["logging"] = v
+	}
+	if v := strField("check-certificate"); v != "" && v != "true" {
+		// true este default, îl trimitem doar dacă e false
+		addPayload["check-certificate"] = v
+	}
+
+	// Noua imagine (deja setată mai sus, dar reasigurăm)
 	addPayload["remote-image"] = newImage
+
+	log.Printf("[Repull] Add payload for %s: %v", containerName, addPayload)
 
 	log.Printf("[Repull] Re-adding container %s with image %s...", containerName, newImage)
 	_, err := s.RouterOsClient.AddContainer(ctx, addPayload)
