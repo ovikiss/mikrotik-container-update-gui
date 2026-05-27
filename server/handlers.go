@@ -895,11 +895,28 @@ func (s *Server) forceRepullContainer(ctx context.Context, container map[string]
 	cID, _ := container["id"].(string)
 	containerName, _ := container["name"].(string)
 
-	// Pas 1: citim config-ul complet pentru a putea recrea containerul
+	// Pas 1: citim config-ul complet via ListContainers (RouterOS REST API nu suportă GET
+	// pe un singur container după ID — /container/*B1 nu funcționează, dă timeout)
 	log.Printf("[Repull] Reading full config for container %s (%s)...", containerName, cID)
-	rawCfg, err := s.RouterOsClient.GetContainerConfig(ctx, cID)
-	if err != nil {
-		return fmt.Errorf("failed to read container config: %w", err)
+	var rawCfg map[string]interface{}
+	{
+		cs, listErr := s.RouterOsClient.ListContainers(ctx)
+		if listErr != nil {
+			return fmt.Errorf("failed to list containers to read config: %w", listErr)
+		}
+		for _, r := range cs {
+			rawID, _ := r[".id"].(string)
+			if rawID == "" {
+				rawID, _ = r["id"].(string)
+			}
+			if rawID == cID {
+				rawCfg = r
+				break
+			}
+		}
+		if rawCfg == nil {
+			return fmt.Errorf("container %s (%s) not found when reading config", containerName, cID)
+		}
 	}
 
 	// Pas 2: oprire graceful
@@ -977,7 +994,7 @@ func (s *Server) forceRepullContainer(ctx context.Context, container map[string]
 	addPayload["remote-image"] = newImage
 
 	log.Printf("[Repull] Re-adding container %s with image %s...", containerName, newImage)
-	_, err = s.RouterOsClient.AddContainer(ctx, addPayload)
+	_, err := s.RouterOsClient.AddContainer(ctx, addPayload)
 	if err != nil {
 		return fmt.Errorf("failed to re-add container: %w", err)
 	}
