@@ -73,6 +73,27 @@
               </select>
             </div>
           </label>
+          <label class="control" for="fontSizeSelect">
+            <span id="fontLabel">Font size</span>
+            <div class="theme-dropdown" id="fontDropdown">
+              <button
+                type="button"
+                class="theme-toggle"
+                id="fontToggle"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+              >
+                <img src="/images/ui/font-size.svg" alt="" />
+                <span id="fontCurrentLabel">Standard</span>
+              </button>
+              <div class="theme-menu" id="fontMenu" role="listbox" aria-label="Font size options"></div>
+              <select id="fontSizeSelect" class="sr-only" tabindex="-1" aria-hidden="true">
+                <option value="25">Compact</option>
+                <option value="50">Standard</option>
+                <option value="100">Large</option>
+              </select>
+            </div>
+          </label>
           <label class="control" for="langSelect">
             <span id="langLabel">Language</span>
             <div class="lang-dropdown" id="langDropdown">

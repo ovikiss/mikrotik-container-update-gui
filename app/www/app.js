@@ -9,6 +9,7 @@ const state = {
   rollbackTargetById: {},
   theme: "auto",
   themeStyle: "modern",
+  fontSize: "50",
   lang: "en"
 };
 
@@ -25,6 +26,11 @@ const els = {
   themeStyleCurrentLabel: document.getElementById("themeStyleCurrentLabel"),
   themeStyleSelect: document.getElementById("themeStyleSelect"),
   themeStyleDropdown: document.getElementById("themeStyleDropdown"),
+  fontToggle: document.getElementById("fontToggle"),
+  fontMenu: document.getElementById("fontMenu"),
+  fontCurrentLabel: document.getElementById("fontCurrentLabel"),
+  fontSizeSelect: document.getElementById("fontSizeSelect"),
+  fontDropdown: document.getElementById("fontDropdown"),
   langToggle: document.getElementById("langToggle"),
   langMenu: document.getElementById("langMenu"),
   langCurrentIcon: document.getElementById("langCurrentIcon"),
@@ -57,11 +63,17 @@ const LANG_ITEMS = [
   { value: "en", label: "EN", icon: "/images/lang/en.svg" },
   { value: "ro", label: "RO", icon: "/images/lang/ro.svg" }
 ];
+const FONT_SIZE_ITEMS = [
+  { value: "25", labelKey: "fontLegacy" },
+  { value: "50", labelKey: "fontCurrent" },
+  { value: "100", labelKey: "fontLarge" }
+];
 const I18N = {
   en: {
     auto: "Auto", light: "Light", dark: "Dark", modern: "Modern", classic: "Classic",
     subtitle: "Auto-discovers all containers from RouterOS REST API",
     theme: "Theme", mode: "Style", language: "Language",
+    fontSize: "Font size", fontLegacy: "Compact", fontCurrent: "Standard", fontLarge: "Large",
     checkAll: "Check selected/all", updateAll: "Update all",
     name: "Name", id: "ID", status: "Status", update: "Update", image: "Image", actions: "Actions",
     activity: "Activity", checking: "Checking connection..."
@@ -70,6 +82,7 @@ const I18N = {
     auto: "Auto", light: "Luminos", dark: "Întunecat", modern: "Modern", classic: "Clasic",
     subtitle: "Descoperă automat toate containerele prin RouterOS REST API",
     theme: "Temă", mode: "Stil", language: "Limbă",
+    fontSize: "Mărime font", fontLegacy: "Compact", fontCurrent: "Standard", fontLarge: "Mare",
     checkAll: "Verifică selectate/toate", updateAll: "Actualizează tot",
     name: "Nume", id: "ID", status: "Status", update: "Update", image: "Imagine", actions: "Acțiuni",
     activity: "Activitate", checking: "Verific conexiunea..."
@@ -105,6 +118,11 @@ function closeLanguageMenu() {
   els.langToggle.setAttribute("aria-expanded", "false");
 }
 
+function closeFontMenu() {
+  els.fontMenu.classList.remove("open");
+  els.fontToggle.setAttribute("aria-expanded", "false");
+}
+
 function updateThemeButton() {
   const picked = THEME_ITEMS.find((item) => item.value === state.theme) || THEME_ITEMS[0];
   els.themeCurrentIcon.setAttribute("src", picked.icon);
@@ -123,11 +141,18 @@ function updateLanguageButton() {
   els.langSelect.value = picked.value;
 }
 
+function updateFontButton() {
+  const picked = FONT_SIZE_ITEMS.find((item) => item.value === state.fontSize) || FONT_SIZE_ITEMS[1];
+  els.fontCurrentLabel.textContent = t(picked.labelKey);
+  els.fontSizeSelect.value = picked.value;
+}
+
 function applyLanguage() {
   document.documentElement.lang = state.lang;
   document.getElementById("subtitle").textContent = t("subtitle");
   document.getElementById("themeStyleLabel").textContent = t("theme");
   document.getElementById("themeLabel").textContent = t("mode");
+  document.getElementById("fontLabel").textContent = t("fontSize");
   document.getElementById("langLabel").textContent = t("language");
   document.getElementById("bulkCheckLabel").textContent = t("checkAll");
   document.getElementById("bulkUpdateLabel").textContent = t("updateAll");
@@ -143,6 +168,7 @@ function applyLanguage() {
   }
   updateThemeButton();
   updateThemeStyleButton();
+  updateFontButton();
   updateLanguageButton();
 }
 
@@ -165,6 +191,12 @@ function applyThemeStyle() {
   );
   els.themeStyleSelect.value = state.themeStyle;
   updateThemeStyleButton();
+}
+
+function applyFontSize() {
+  const picked = FONT_SIZE_ITEMS.find((item) => item.value === state.fontSize) || FONT_SIZE_ITEMS[1];
+  document.documentElement.setAttribute("data-font-size", picked.value);
+  updateFontButton();
 }
 
 async function setTheme(value) {
@@ -245,6 +277,27 @@ function renderLanguageMenu() {
   updateLanguageButton();
 }
 
+function renderFontMenu() {
+  els.fontMenu.innerHTML = "";
+  FONT_SIZE_ITEMS.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "theme-item";
+    button.setAttribute("role", "option");
+    button.innerHTML = `<img src="/images/ui/font-size.svg" alt="" /><span>${t(item.labelKey)}</span>`;
+    button.addEventListener("click", async () => {
+      closeFontMenu();
+      try {
+        await setFontSize(item.value);
+      } catch (error) {
+        appendLog(`Font size save failed: ${error.message}`);
+      }
+    });
+    els.fontMenu.appendChild(button);
+  });
+  updateFontButton();
+}
+
 async function loadSettings() {
   const result = await apiRequest("/api/settings.json");
   const incoming = result?.settings || {};
@@ -252,6 +305,7 @@ async function loadSettings() {
   const rawThemeStyle = incoming.theme_style || incoming.themeStyle;
   const allowed = THEME_STYLE_ITEMS.map((x) => x.value);
   state.themeStyle = allowed.includes(rawThemeStyle) ? rawThemeStyle : (THEME_STYLE_ITEMS[0] ? THEME_STYLE_ITEMS[0].value : "modern");
+  state.fontSize = ["25", "50", "100"].includes(String(incoming.font_size || "")) ? String(incoming.font_size) : state.fontSize;
   state.lang = incoming.language === "ro" ? "ro" : "en";
 }
 
@@ -293,9 +347,11 @@ async function initAppearance() {
   }
   applyThemeStyle();
   applyTheme();
+  applyFontSize();
   applyLanguage();
   renderThemeStyleMenu();
   renderThemeMenu();
+  renderFontMenu();
   renderLanguageMenu();
 }
 
@@ -304,10 +360,22 @@ async function setLanguage(value) {
   applyLanguage();
   renderThemeStyleMenu();
   renderThemeMenu();
+  renderFontMenu();
   renderLanguageMenu();
   renderRows();
   refreshBulkUpdateButton();
   await saveSettings({ language: state.lang });
+}
+
+async function setFontSize(value) {
+  state.fontSize = ["25", "50", "100"].includes(String(value)) ? String(value) : "50";
+  applyFontSize();
+  try {
+    await saveSettings({ font_size: state.fontSize });
+  } catch (_) {}
+  try {
+    localStorage.setItem("mcug_font_size", state.fontSize);
+  } catch (_) {}
 }
 
 function nowLabel() {
@@ -866,6 +934,8 @@ els.themeToggle.addEventListener("click", () => {
   els.themeToggle.setAttribute("aria-expanded", open ? "true" : "false");
   if (open) {
     closeThemeStyleMenu();
+    closeFontMenu();
+    closeLanguageMenu();
   }
 });
 
@@ -874,6 +944,18 @@ els.themeStyleToggle.addEventListener("click", () => {
   els.themeStyleToggle.setAttribute("aria-expanded", open ? "true" : "false");
   if (open) {
     closeThemeMenu();
+    closeFontMenu();
+    closeLanguageMenu();
+  }
+});
+
+els.fontToggle.addEventListener("click", () => {
+  const open = els.fontMenu.classList.toggle("open");
+  els.fontToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    closeThemeMenu();
+    closeThemeStyleMenu();
+    closeLanguageMenu();
   }
 });
 
@@ -883,6 +965,7 @@ els.langToggle.addEventListener("click", () => {
   if (open) {
     closeThemeMenu();
     closeThemeStyleMenu();
+    closeFontMenu();
   }
 });
 
@@ -892,6 +975,9 @@ document.addEventListener("click", (event) => {
   }
   if (!els.themeStyleDropdown.contains(event.target)) {
     closeThemeStyleMenu();
+  }
+  if (!els.fontDropdown.contains(event.target)) {
+    closeFontMenu();
   }
   if (!els.langDropdown.contains(event.target)) {
     closeLanguageMenu();
@@ -925,6 +1011,10 @@ if (prefersDarkQuery) {
 }
 
 async function start() {
+  try {
+    const localFont = localStorage.getItem("mcug_font_size");
+    if (["25", "50", "100"].includes(String(localFont))) state.fontSize = String(localFont);
+  } catch (_) {}
   await loadThemeStylesConfig();
   await initAppearance();
   await loadContainers();
