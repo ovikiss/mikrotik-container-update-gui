@@ -27,7 +27,7 @@ jobs:
           mkdir -p app/www/images/ui app/www/images/lang app/www/i18n
           cp -a /tmp/mikrotik-ui-shared/ui/images/ui/. app/www/images/ui/
           cp -a /tmp/mikrotik-ui-shared/ui/images/lang/. app/www/images/lang/
-          cp -a /tmp/mikrotik-ui-shared/ui/i18n/. app/www/i18n/
+          cp -a /tmp/mikrotik-ui-shared/ui/i18n/. app/www/i18n/`n          cp -f /tmp/mikrotik-ui-shared/ui/common/theme-styles.json app/www/i18n/theme-styles.json
           cp -f /tmp/mikrotik-ui-shared/ui/css/style-modern.css app/www/styles-modern.css
           cp -f /tmp/mikrotik-ui-shared/ui/css/style-classic.css app/www/styles-classic.css
 
@@ -132,3 +132,4 @@ jobs:
               "https://api.github.com/users/${OWNER}/packages/container/${PACKAGE}/versions/${id}" >/dev/null
             echo "Deleted package version: ${id}"
           done
+

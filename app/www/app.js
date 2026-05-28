@@ -49,7 +49,7 @@ const THEME_ITEMS = [
   { value: "dark", labelKey: "dark", icon: "/images/ui/theme-dark.svg" }
 ];
 
-const THEME_STYLE_ITEMS = [
+let THEME_STYLE_ITEMS = [
   { value: "modern", labelKey: "modern" },
   { value: "classic", labelKey: "classic" }
 ];
@@ -81,6 +81,15 @@ function t(key) {
   return (I18N[state.lang] && I18N[state.lang][key]) || I18N.en[key] || key;
 }
 
+function getThemeStyleLabel(item) {
+  const labels = item && item.label;
+  if (labels && typeof labels === "object") {
+    if (state.lang === "ro" && labels.ro) return String(labels.ro);
+    if (labels.en) return String(labels.en);
+  }
+  return t(item && item.labelKey ? item.labelKey : "modern");
+}
+
 function closeThemeMenu() {
   els.themeMenu.classList.remove("open");
   els.themeToggle.setAttribute("aria-expanded", "false");
@@ -104,7 +113,7 @@ function updateThemeButton() {
 
 function updateThemeStyleButton() {
   const picked = THEME_STYLE_ITEMS.find((item) => item.value === state.themeStyle) || THEME_STYLE_ITEMS[0];
-  els.themeStyleCurrentLabel.textContent = t(picked.labelKey);
+  els.themeStyleCurrentLabel.textContent = getThemeStyleLabel(picked);
 }
 
 function updateLanguageButton() {
@@ -148,9 +157,11 @@ function applyTheme() {
 
 function applyThemeStyle() {
   document.documentElement.setAttribute("data-theme-style", state.themeStyle);
+  const picked = THEME_STYLE_ITEMS.find((item) => item.value === state.themeStyle) || THEME_STYLE_ITEMS[0];
+  const cssFile = (picked && picked.css) ? String(picked.css) : (state.themeStyle === "classic" ? "style-classic.css" : "style-modern.css");
   els.themeStyleCss.setAttribute(
     "href",
-    state.themeStyle === "classic" ? "/styles-classic.css" : "/styles-modern.css"
+    "/" + cssFile.replace(/^\/+/, "")
   );
   els.themeStyleSelect.value = state.themeStyle;
   updateThemeStyleButton();
@@ -164,7 +175,8 @@ async function setTheme(value) {
 }
 
 async function setThemeStyle(value) {
-  state.themeStyle = value === "classic" ? "classic" : "modern";
+  const allowed = THEME_STYLE_ITEMS.map((x) => x.value);
+  state.themeStyle = allowed.includes(value) ? value : (THEME_STYLE_ITEMS[0] ? THEME_STYLE_ITEMS[0].value : "modern");
   applyThemeStyle();
   await saveSettings({ theme_style: state.themeStyle });
   await loadContainers();
@@ -198,7 +210,7 @@ function renderThemeStyleMenu() {
     button.type = "button";
     button.className = "theme-item";
     button.setAttribute("role", "option");
-    button.innerHTML = `<img src="/images/ui/theme-style.svg" alt="" /><span>${t(item.labelKey)}</span>`;
+    button.innerHTML = `<img src="/images/ui/theme-style.svg" alt="" /><span>${getThemeStyleLabel(item)}</span>`;
     button.addEventListener("click", async () => {
       closeThemeStyleMenu();
       try {
@@ -238,8 +250,32 @@ async function loadSettings() {
   const incoming = result?.settings || {};
   state.theme = ["auto", "light", "dark"].includes(incoming.theme) ? incoming.theme : "auto";
   const rawThemeStyle = incoming.theme_style || incoming.themeStyle;
-  state.themeStyle = rawThemeStyle === "classic" ? "classic" : "modern";
+  const allowed = THEME_STYLE_ITEMS.map((x) => x.value);
+  state.themeStyle = allowed.includes(rawThemeStyle) ? rawThemeStyle : (THEME_STYLE_ITEMS[0] ? THEME_STYLE_ITEMS[0].value : "modern");
   state.lang = incoming.language === "ro" ? "ro" : "en";
+}
+
+function normalizeThemeStyleConfig(items) {
+  if (!Array.isArray(items)) return null;
+  const out = [];
+  items.forEach((x) => {
+    if (!x || typeof x !== "object") return;
+    const value = String(x.value || "").trim().toLowerCase();
+    const css = String(x.css || "").trim();
+    if (!value || !css) return;
+    const label = (x.label && typeof x.label === "object") ? x.label : null;
+    out.push({ value, css, label, labelKey: x.labelKey || value });
+  });
+  return out.length ? out : null;
+}
+
+async function loadThemeStylesConfig() {
+  const q = `?_=${Date.now()}`;
+  try {
+    const cfg = await fetch("/i18n/theme-styles.json" + q).then((r) => r.json());
+    const parsed = normalizeThemeStyleConfig(cfg);
+    if (parsed) THEME_STYLE_ITEMS = parsed;
+  } catch (_) {}
 }
 
 async function saveSettings(patch) {
@@ -889,6 +925,7 @@ if (prefersDarkQuery) {
 }
 
 async function start() {
+  await loadThemeStylesConfig();
   await initAppearance();
   await loadContainers();
 }
