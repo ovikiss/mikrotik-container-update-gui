@@ -639,6 +639,16 @@ func (r *RegistryClient) ResolveRemoteConfigDigest(ctx context.Context, imageRef
 			return nil, nErr
 		}
 		if nStatus < 200 || nStatus >= 300 {
+			// Some registries (including GHCR in certain multi-arch flows) may return 404
+			// for nested manifest fetch even if the index itself is valid.
+			// Fallback to child manifest digest so digest-compare can still produce upToDate=true/false.
+			if nStatus == http.StatusNotFound {
+				return &RemoteConfigDigest{
+					ImageRef:                     parsed.Original,
+					RemoteConfigDigest:           digest,
+					NormalizedRemoteConfigDigest: NormalizeDigest(digest),
+				}, nil
+			}
 			return nil, fmt.Errorf("registry returned HTTP %d for nested manifest", nStatus)
 		}
 
