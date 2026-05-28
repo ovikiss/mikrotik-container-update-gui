@@ -885,6 +885,7 @@ func (s *Server) RunVersionUpdate(ctx context.Context, container map[string]inte
 
 	// Self-update must be delegated to RouterOS native update action.
 	// If we run remove+add from inside the same container process, shutdown timing may interrupt the flow.
+	// Queueing a RouterOS one-shot script ensures update+start continue after this API process is terminated.
 	if isSelf {
 		if channelSwitchRequested && desiredImageRef != "" && desiredImageRef != currentImageRef {
 			if _, err := s.RouterOsClient.SetContainerRemoteImage(ctx, container, desiredImageRef); err != nil {
@@ -895,17 +896,24 @@ func (s *Server) RunVersionUpdate(ctx context.Context, container map[string]inte
 				}
 			}
 		}
-		log.Printf("[Update] Self container %s: delegating update to RouterOS native action...", cID)
-		if _, err := s.RouterOsClient.RunContainerAction(ctx, "update", container); err != nil {
+
+		scriptName := fmt.Sprintf("mcug-selfupdate-%d", time.Now().Unix())
+		scriptSource := fmt.Sprintf(
+			":local cid %q; /container/update [find where .id=$cid]; :delay 15s; /container/start [find where .id=$cid]; /system/script/remove [find where name=%q];",
+			cID,
+			scriptName,
+		)
+		log.Printf("[Update] Self container %s: scheduling one-shot RouterOS script %s...", cID, scriptName)
+		if err := s.RouterOsClient.RunOneShotScript(ctx, scriptName, scriptSource); err != nil {
 			return nil, &ApiUserError{
-				Message: "Self update failed during RouterOS update action: " + err.Error(),
+				Message: "Self update scheduling failed: " + err.Error(),
 				Status:  http.StatusInternalServerError,
 				Details: map[string]interface{}{"container": cID, "image": desiredImageRef},
 			}
 		}
 		return map[string]interface{}{
-			"mode":           "self-native-update",
-			"message":        "Self update delegated to RouterOS native update action.",
+			"mode":           "self-scripted-update",
+			"message":        "Self update queued on RouterOS (update + auto-start). Connection may drop briefly.",
 			"imageRef":       currentImageRef,
 			"targetImageRef": desiredImageRef,
 			"channelSwitch":  channelSwitchRequested,

@@ -462,3 +462,31 @@ func (c *RouterOsClient) RemoveContainer(ctx context.Context, container map[stri
 func (c *RouterOsClient) AddContainer(ctx context.Context, cfg map[string]interface{}) (interface{}, error) {
 	return c.request(ctx, "/container/add", "POST", cfg, nil)
 }
+
+// RunOneShotScript creates and runs a temporary RouterOS script.
+// Useful when an operation must survive the caller container stopping itself.
+func (c *RouterOsClient) RunOneShotScript(ctx context.Context, scriptName string, source string) error {
+	if strings.TrimSpace(scriptName) == "" {
+		return errors.New("missing script name")
+	}
+	if strings.TrimSpace(source) == "" {
+		return errors.New("missing script source")
+	}
+
+	addBody := map[string]interface{}{
+		"name":   scriptName,
+		"source": source,
+	}
+	if _, err := c.request(ctx, "/system/script/add", "POST", addBody, nil); err != nil {
+		return err
+	}
+
+	// RouterOS REST accepts .id for script run, but some setups accept number/name.
+	if _, err := c.request(ctx, "/system/script/run", "POST", map[string]interface{}{".id": scriptName}, nil); err != nil {
+		if _, err2 := c.request(ctx, "/system/script/run", "POST", map[string]interface{}{"number": scriptName}, nil); err2 != nil {
+			return err
+		}
+	}
+
+	return nil
+}
