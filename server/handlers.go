@@ -675,7 +675,6 @@ func (s *Server) RunVersionRollback(ctx context.Context, container map[string]in
 	}
 
 	cID, _ := container["id"].(string)
-	isSelf, _ := container["isSelf"].(bool)
 	status, _ := container["status"].(string)
 
 	// 1. Oprim containerul dacă rulează, pentru a evita coruperea SQLite din cauza repornirii bruște (SIGKILL)
@@ -862,6 +861,7 @@ func (s *Server) RunVersionUpdate(ctx context.Context, container map[string]inte
 	}
 
 	cID, _ := container["id"].(string)
+	isSelf, _ := container["isSelf"].(bool)
 
 	// Preflight: ensure desired target resolves to a pullable manifest *before* stop/remove.
 	// This avoids taking the container down when registry/tag is temporarily broken (e.g. GHCR 404 on nested manifest).
