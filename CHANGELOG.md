@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.4.17 - 2026-05-28
+
+- **Shared theme sync extended for future themes.**
+  Build pipeline now copies the full shared CSS folder from `ovikiss/mikrotik-ui-shared`, not only `modern` and `classic`.
+- **Glass theme support enabled end-to-end.**
+  `theme_style=glass` is now accepted by backend validation and persisted correctly.
+- **Theme stylesheet path normalized.**
+  Default UI theme stylesheet link now uses the shared naming convention (`/style-modern.css`) so runtime and shared assets stay aligned.
+
+## v0.4.16 - 2026-05-28
+
+- **CI fix for GHCR tag builds.**
+  Fixed a workflow shell parsing issue in `docker-publish.yml` caused by a stray backtick/newline sequence in the shared UI sync step.
+- **Build reliability restored.**
+  Tag-triggered Docker publish to GHCR now runs correctly again for `v*` tags.
+
 ## v0.4.9 - 2026-05-27
 
 - **Fix: incorrect container status detection during update/pull.**
