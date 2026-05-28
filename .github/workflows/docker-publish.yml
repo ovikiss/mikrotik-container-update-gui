@@ -29,8 +29,7 @@ jobs:
           cp -a /tmp/mikrotik-ui-shared/ui/images/lang/. app/www/images/lang/
           cp -a /tmp/mikrotik-ui-shared/ui/i18n/. app/www/i18n/
           cp -f /tmp/mikrotik-ui-shared/ui/common/theme-styles.json app/www/i18n/theme-styles.json
-          cp -f /tmp/mikrotik-ui-shared/ui/css/style-modern.css app/www/styles-modern.css
-          cp -f /tmp/mikrotik-ui-shared/ui/css/style-classic.css app/www/styles-classic.css
+          cp -a /tmp/mikrotik-ui-shared/ui/css/. app/www/
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4

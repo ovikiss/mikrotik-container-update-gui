@@ -86,7 +86,7 @@ func (m *SettingsManager) ReadSettings() Settings {
 		themeStyleRaw, _ = raw["themeStyle"].(string)
 	}
 	themeStyle := strings.ToLower(strings.TrimSpace(themeStyleRaw))
-	if themeStyle != "modern" && themeStyle != "classic" {
+	if themeStyle != "modern" && themeStyle != "classic" && themeStyle != "glass" {
 		themeStyle = "modern"
 	}
 
@@ -138,7 +138,7 @@ func (m *SettingsManager) WriteSettings(patch map[string]interface{}) (Settings,
 	if current.Theme != "auto" && current.Theme != "light" && current.Theme != "dark" {
 		current.Theme = "auto"
 	}
-	if current.ThemeStyle != "modern" && current.ThemeStyle != "classic" {
+	if current.ThemeStyle != "modern" && current.ThemeStyle != "classic" && current.ThemeStyle != "glass" {
 		current.ThemeStyle = "modern"
 	}
 
