@@ -28,11 +28,11 @@
             </svg>
             <span class="brand-text">Container Update GUI</span>
           </h1>
-          <p class="subtitle">Auto-discovers all containers from RouterOS REST API</p>
+          <p class="subtitle" id="subtitle">Auto-discovers all containers from RouterOS REST API</p>
         </div>
         <div class="controls">
           <label class="control" for="themeStyleSelect">
-            <span>Theme</span>
+            <span id="themeStyleLabel">Theme</span>
             <div class="theme-dropdown" id="themeStyleDropdown">
               <button
                 type="button"
@@ -53,7 +53,7 @@
           </label>
 
           <label class="control" for="themeSelect">
-            <span>Style</span>
+            <span id="themeLabel">Style</span>
             <div class="theme-dropdown" id="themeDropdown">
               <button
                 type="button"
@@ -73,6 +73,20 @@
               </select>
             </div>
           </label>
+          <label class="control" for="langSelect">
+            <span id="langLabel">Language</span>
+            <div class="lang-dropdown" id="langDropdown">
+              <button type="button" class="lang-toggle" id="langToggle" aria-haspopup="listbox" aria-expanded="false">
+                <img id="langCurrentIcon" src="/images/lang/en.svg" alt="" />
+                <span id="langCurrentLabel">EN</span>
+              </button>
+              <div class="lang-menu" id="langMenu" role="listbox" aria-label="Language options"></div>
+              <select id="langSelect" class="sr-only" tabindex="-1" aria-hidden="true">
+                <option value="en">EN</option>
+                <option value="ro">RO</option>
+              </select>
+            </div>
+          </label>
         </div>
       </header>
 
@@ -83,10 +97,10 @@
         </div>
 
         <div class="toolbar">
-          <button class="btn ghost" data-bulk-action="check">Check selected/all</button>
+          <button class="btn ghost" data-bulk-action="check" id="bulkCheckLabel">Check selected/all</button>
           <button class="btn bulk-update-btn" data-bulk-action="update">
             <span class="bulk-update-icon" aria-hidden="true">↓</span>
-            <span class="bulk-update-label">Update all</span>
+            <span class="bulk-update-label" id="bulkUpdateLabel">Update all</span>
           </button>
         </div>
 
@@ -95,12 +109,12 @@
             <thead>
               <tr>
                 <th><input id="selectAll" type="checkbox" /></th>
-                <th>Name</th>
-                <th>ID</th>
-                <th>Status</th>
-                <th>Update</th>
-                <th>Image</th>
-                <th>Actions</th>
+                <th id="thName">Name</th>
+                <th id="thId">ID</th>
+                <th id="thStatus">Status</th>
+                <th id="thUpdate">Update</th>
+                <th id="thImage">Image</th>
+                <th id="thActions">Actions</th>
               </tr>
             </thead>
             <tbody id="containersBody"></tbody>
@@ -109,7 +123,7 @@
       </section>
 
       <section class="panel">
-        <h2>Activity</h2>
+        <h2 id="activityTitle">Activity</h2>
         <pre id="logBox" class="log-box"></pre>
       </section>
     </main>

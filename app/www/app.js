@@ -8,7 +8,8 @@ const state = {
   rollbackOptionsById: {},
   rollbackTargetById: {},
   theme: "auto",
-  themeStyle: "modern"
+  themeStyle: "modern",
+  lang: "en"
 };
 
 const els = {
@@ -24,6 +25,12 @@ const els = {
   themeStyleCurrentLabel: document.getElementById("themeStyleCurrentLabel"),
   themeStyleSelect: document.getElementById("themeStyleSelect"),
   themeStyleDropdown: document.getElementById("themeStyleDropdown"),
+  langToggle: document.getElementById("langToggle"),
+  langMenu: document.getElementById("langMenu"),
+  langCurrentIcon: document.getElementById("langCurrentIcon"),
+  langCurrentLabel: document.getElementById("langCurrentLabel"),
+  langSelect: document.getElementById("langSelect"),
+  langDropdown: document.getElementById("langDropdown"),
   selectAll: document.getElementById("selectAll"),
   containersBody: document.getElementById("containersBody"),
   rowTemplate: document.getElementById("rowTemplate"),
@@ -37,16 +44,42 @@ const els = {
 };
 
 const THEME_ITEMS = [
-  { value: "auto", label: "Auto", icon: "/images/ui/theme-auto.svg" },
-  { value: "light", label: "Light", icon: "/images/ui/theme-light.svg" },
-  { value: "dark", label: "Dark", icon: "/images/ui/theme-dark.svg" }
+  { value: "auto", labelKey: "auto", icon: "/images/ui/theme-auto.svg" },
+  { value: "light", labelKey: "light", icon: "/images/ui/theme-light.svg" },
+  { value: "dark", labelKey: "dark", icon: "/images/ui/theme-dark.svg" }
 ];
 
 const THEME_STYLE_ITEMS = [
-  { value: "modern", label: "Modern" },
-  { value: "classic", label: "Classic" }
+  { value: "modern", labelKey: "modern" },
+  { value: "classic", labelKey: "classic" }
 ];
+const LANG_ITEMS = [
+  { value: "en", label: "EN", icon: "/images/lang/en.svg" },
+  { value: "ro", label: "RO", icon: "/images/lang/ro.svg" }
+];
+const I18N = {
+  en: {
+    auto: "Auto", light: "Light", dark: "Dark", modern: "Modern", classic: "Classic",
+    subtitle: "Auto-discovers all containers from RouterOS REST API",
+    theme: "Theme", mode: "Style", language: "Language",
+    checkAll: "Check selected/all", updateAll: "Update all",
+    name: "Name", id: "ID", status: "Status", update: "Update", image: "Image", actions: "Actions",
+    activity: "Activity", checking: "Checking connection..."
+  },
+  ro: {
+    auto: "Auto", light: "Luminos", dark: "Întunecat", modern: "Modern", classic: "Clasic",
+    subtitle: "Descoperă automat toate containerele prin RouterOS REST API",
+    theme: "Temă", mode: "Stil", language: "Limbă",
+    checkAll: "Verifică selectate/toate", updateAll: "Actualizează tot",
+    name: "Nume", id: "ID", status: "Status", update: "Update", image: "Imagine", actions: "Acțiuni",
+    activity: "Activitate", checking: "Verific conexiunea..."
+  }
+};
 const prefersDarkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+
+function t(key) {
+  return (I18N[state.lang] && I18N[state.lang][key]) || I18N.en[key] || key;
+}
 
 function closeThemeMenu() {
   els.themeMenu.classList.remove("open");
@@ -58,15 +91,50 @@ function closeThemeStyleMenu() {
   els.themeStyleToggle.setAttribute("aria-expanded", "false");
 }
 
+function closeLanguageMenu() {
+  els.langMenu.classList.remove("open");
+  els.langToggle.setAttribute("aria-expanded", "false");
+}
+
 function updateThemeButton() {
   const picked = THEME_ITEMS.find((item) => item.value === state.theme) || THEME_ITEMS[0];
   els.themeCurrentIcon.setAttribute("src", picked.icon);
-  els.themeCurrentLabel.textContent = picked.label;
+  els.themeCurrentLabel.textContent = t(picked.labelKey);
 }
 
 function updateThemeStyleButton() {
   const picked = THEME_STYLE_ITEMS.find((item) => item.value === state.themeStyle) || THEME_STYLE_ITEMS[0];
-  els.themeStyleCurrentLabel.textContent = picked.label;
+  els.themeStyleCurrentLabel.textContent = t(picked.labelKey);
+}
+
+function updateLanguageButton() {
+  const picked = LANG_ITEMS.find((item) => item.value === state.lang) || LANG_ITEMS[0];
+  els.langCurrentIcon.setAttribute("src", picked.icon);
+  els.langCurrentLabel.textContent = picked.label;
+  els.langSelect.value = picked.value;
+}
+
+function applyLanguage() {
+  document.documentElement.lang = state.lang;
+  document.getElementById("subtitle").textContent = t("subtitle");
+  document.getElementById("themeStyleLabel").textContent = t("theme");
+  document.getElementById("themeLabel").textContent = t("mode");
+  document.getElementById("langLabel").textContent = t("language");
+  document.getElementById("bulkCheckLabel").textContent = t("checkAll");
+  document.getElementById("bulkUpdateLabel").textContent = t("updateAll");
+  document.getElementById("thName").textContent = t("name");
+  document.getElementById("thId").textContent = t("id");
+  document.getElementById("thStatus").textContent = t("status");
+  document.getElementById("thUpdate").textContent = t("update");
+  document.getElementById("thImage").textContent = t("image");
+  document.getElementById("thActions").textContent = t("actions");
+  document.getElementById("activityTitle").textContent = t("activity");
+  if (!state.containers.length) {
+    els.connectionBadge.textContent = t("checking");
+  }
+  updateThemeButton();
+  updateThemeStyleButton();
+  updateLanguageButton();
 }
 
 function applyTheme() {
@@ -109,7 +177,7 @@ function renderThemeMenu() {
     button.type = "button";
     button.className = "theme-item";
     button.setAttribute("role", "option");
-    button.innerHTML = `<img src="${item.icon}" alt="" /><span>${item.label}</span>`;
+    button.innerHTML = `<img src="${item.icon}" alt="" /><span>${t(item.labelKey)}</span>`;
     button.addEventListener("click", async () => {
       closeThemeMenu();
       try {
@@ -130,7 +198,7 @@ function renderThemeStyleMenu() {
     button.type = "button";
     button.className = "theme-item";
     button.setAttribute("role", "option");
-    button.innerHTML = `<img src="/images/ui/theme-style.svg" alt="" /><span>${item.label}</span>`;
+    button.innerHTML = `<img src="/images/ui/theme-style.svg" alt="" /><span>${t(item.labelKey)}</span>`;
     button.addEventListener("click", async () => {
       closeThemeStyleMenu();
       try {
@@ -144,12 +212,34 @@ function renderThemeStyleMenu() {
   updateThemeStyleButton();
 }
 
+function renderLanguageMenu() {
+  els.langMenu.innerHTML = "";
+  LANG_ITEMS.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "lang-item";
+    button.setAttribute("role", "option");
+    button.innerHTML = `<img src="${item.icon}" alt="" /><span>${item.label}</span>`;
+    button.addEventListener("click", async () => {
+      closeLanguageMenu();
+      try {
+        await setLanguage(item.value);
+      } catch (error) {
+        appendLog(`Language save failed: ${error.message}`);
+      }
+    });
+    els.langMenu.appendChild(button);
+  });
+  updateLanguageButton();
+}
+
 async function loadSettings() {
   const result = await apiRequest("/api/settings.json");
   const incoming = result?.settings || {};
   state.theme = ["auto", "light", "dark"].includes(incoming.theme) ? incoming.theme : "auto";
   const rawThemeStyle = incoming.theme_style || incoming.themeStyle;
   state.themeStyle = rawThemeStyle === "classic" ? "classic" : "modern";
+  state.lang = incoming.language === "ro" ? "ro" : "en";
 }
 
 async function saveSettings(patch) {
@@ -167,8 +257,21 @@ async function initAppearance() {
   }
   applyThemeStyle();
   applyTheme();
+  applyLanguage();
   renderThemeStyleMenu();
   renderThemeMenu();
+  renderLanguageMenu();
+}
+
+async function setLanguage(value) {
+  state.lang = value === "ro" ? "ro" : "en";
+  applyLanguage();
+  renderThemeStyleMenu();
+  renderThemeMenu();
+  renderLanguageMenu();
+  renderRows();
+  refreshBulkUpdateButton();
+  await saveSettings({ language: state.lang });
 }
 
 function nowLabel() {
@@ -305,7 +408,7 @@ function refreshBulkUpdateButton() {
   let iconEl = els.bulkUpdateIcon;
   let labelEl = els.bulkUpdateLabel;
   if (!iconEl || !labelEl) {
-    const existingText = (els.bulkUpdateButton.textContent || "").trim() || "Update all";
+    const existingText = (els.bulkUpdateButton.textContent || "").trim() || t("updateAll");
     els.bulkUpdateButton.textContent = "";
     iconEl = document.createElement("span");
     iconEl.className = "bulk-update-icon";
@@ -334,11 +437,11 @@ function refreshBulkUpdateButton() {
     if (selectedEligibleCount > 0) {
       els.bulkUpdateButton.classList.add("is-selected");
       iconEl.textContent = "↑";
-      labelEl.textContent = `Update selected (${selectedCount})`;
+      labelEl.textContent = `${state.lang === "ro" ? "Actualizeaza selectate" : "Update selected"} (${selectedCount})`;
     } else {
       els.bulkUpdateButton.classList.add("is-empty");
       iconEl.textContent = "↓";
-      labelEl.textContent = `Update selected (${selectedCount})`;
+      labelEl.textContent = `${state.lang === "ro" ? "Actualizeaza selectate" : "Update selected"} (${selectedCount})`;
     }
     return;
   }
@@ -346,20 +449,20 @@ function refreshBulkUpdateButton() {
   if (checkedCount === 0) {
     els.bulkUpdateButton.classList.add("is-pending");
     iconEl.textContent = "↓";
-    labelEl.textContent = "Update all";
+    labelEl.textContent = t("updateAll");
     return;
   }
 
   if (availableCount > 0) {
     els.bulkUpdateButton.classList.add("is-ready");
     iconEl.textContent = "↑";
-    labelEl.textContent = `Update all (${availableCount})`;
+    labelEl.textContent = `${t("updateAll")} (${availableCount})`;
     return;
   }
 
   els.bulkUpdateButton.classList.add("is-empty");
   iconEl.textContent = "↓";
-  labelEl.textContent = "Update all (0)";
+  labelEl.textContent = `${t("updateAll")} (0)`;
 }
 
 function renderRows() {
@@ -401,8 +504,8 @@ function renderRows() {
     const defaultOption = document.createElement("option");
     defaultOption.value = "";
     defaultOption.textContent = rollbackOptions.length > 0
-      ? "Select rollback version"
-      : "Run check to load versions";
+      ? (state.lang === "ro" ? "Selecteaza versiunea rollback" : "Select rollback version")
+      : (state.lang === "ro" ? "Ruleaza check pentru versiuni" : "Run check to load versions");
     rollbackSelect.appendChild(defaultOption);
     rollbackOptions.forEach((option) => {
       const opt = document.createElement("option");
@@ -427,6 +530,9 @@ function renderRows() {
     });
 
     fragment.querySelectorAll("[data-action]").forEach((btn) => {
+      if (btn.dataset.action === "check") btn.textContent = state.lang === "ro" ? "Verifica" : "Check";
+      if (btn.dataset.action === "update") btn.textContent = state.lang === "ro" ? "Actualizeaza" : "Update";
+      if (btn.dataset.action === "rollback") btn.textContent = "Rollback";
       btn.dataset.staticDisabled = "0";
 
       if (btn.dataset.action === "update") {
@@ -735,12 +841,24 @@ els.themeStyleToggle.addEventListener("click", () => {
   }
 });
 
+els.langToggle.addEventListener("click", () => {
+  const open = els.langMenu.classList.toggle("open");
+  els.langToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    closeThemeMenu();
+    closeThemeStyleMenu();
+  }
+});
+
 document.addEventListener("click", (event) => {
   if (!els.themeDropdown.contains(event.target)) {
     closeThemeMenu();
   }
   if (!els.themeStyleDropdown.contains(event.target)) {
     closeThemeStyleMenu();
+  }
+  if (!els.langDropdown.contains(event.target)) {
+    closeLanguageMenu();
   }
 });
 
