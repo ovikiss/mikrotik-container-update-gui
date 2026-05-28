@@ -675,6 +675,7 @@ func (s *Server) RunVersionRollback(ctx context.Context, container map[string]in
 	}
 
 	cID, _ := container["id"].(string)
+	isSelf, _ := container["isSelf"].(bool)
 	status, _ := container["status"].(string)
 
 	// 1. Oprim containerul dacă rulează, pentru a evita coruperea SQLite din cauza repornirii bruște (SIGKILL)
@@ -880,6 +881,36 @@ func (s *Server) RunVersionUpdate(ctx context.Context, container map[string]inte
 				"arch":           arch,
 			},
 		}
+	}
+
+	// Self-update must be delegated to RouterOS native update action.
+	// If we run remove+add from inside the same container process, shutdown timing may interrupt the flow.
+	if isSelf {
+		if channelSwitchRequested && desiredImageRef != "" && desiredImageRef != currentImageRef {
+			if _, err := s.RouterOsClient.SetContainerRemoteImage(ctx, container, desiredImageRef); err != nil {
+				return nil, &ApiUserError{
+					Message: "Self update failed while switching channel: " + err.Error(),
+					Status:  http.StatusInternalServerError,
+					Details: map[string]interface{}{"container": cID, "image": desiredImageRef},
+				}
+			}
+		}
+		log.Printf("[Update] Self container %s: delegating update to RouterOS native action...", cID)
+		if _, err := s.RouterOsClient.RunContainerAction(ctx, "update", container); err != nil {
+			return nil, &ApiUserError{
+				Message: "Self update failed during RouterOS update action: " + err.Error(),
+				Status:  http.StatusInternalServerError,
+				Details: map[string]interface{}{"container": cID, "image": desiredImageRef},
+			}
+		}
+		return map[string]interface{}{
+			"mode":           "self-native-update",
+			"message":        "Self update delegated to RouterOS native update action.",
+			"imageRef":       currentImageRef,
+			"targetImageRef": desiredImageRef,
+			"channelSwitch":  channelSwitchRequested,
+			"upToDate":       false,
+		}, nil
 	}
 
 	// Salvează backup pre-update
