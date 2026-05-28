@@ -76,7 +76,7 @@ const I18N = {
     fontSize: "Font size", fontLegacy: "Compact", fontCurrent: "Standard", fontLarge: "Large",
     checkAll: "Check selected/all", updateAll: "Update all",
     name: "Name", id: "ID", status: "Status", update: "Update", image: "Image", actions: "Actions",
-    activity: "Activity", checking: "Checking connection..."
+    activity: "Activity", containers: "Containers", checking: "Checking connection..."
   },
   ro: {
     auto: "Auto", light: "Luminos", dark: "Întunecat", modern: "Modern", classic: "Clasic",
@@ -85,7 +85,7 @@ const I18N = {
     fontSize: "Mărime font", fontLegacy: "Compact", fontCurrent: "Standard", fontLarge: "Mare",
     checkAll: "Verifică selectate/toate", updateAll: "Actualizează tot",
     name: "Nume", id: "ID", status: "Status", update: "Update", image: "Imagine", actions: "Acțiuni",
-    activity: "Activitate", checking: "Verific conexiunea..."
+    activity: "Activitate", containers: "Containere", checking: "Verific conexiunea..."
   }
 };
 const prefersDarkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -162,6 +162,7 @@ function applyLanguage() {
   document.getElementById("thUpdate").textContent = t("update");
   document.getElementById("thImage").textContent = t("image");
   document.getElementById("thActions").textContent = t("actions");
+  document.getElementById("containersTitle").textContent = t("containers");
   document.getElementById("activityTitle").textContent = t("activity");
   if (!state.containers.length) {
     els.connectionBadge.textContent = t("checking");

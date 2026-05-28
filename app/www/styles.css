@@ -1,1 +1,55 @@
-@import url("/style-modern.css");
+.app {
+  display: grid;
+  gap: 14px;
+}
+
+.panel {
+  background: var(--card);
+  border: 0.5px solid var(--border);
+  border-radius: 20px;
+  padding: 14px;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow), var(--glass-inset);
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.panel-heading h2,
+#activityTitle {
+  margin: 0;
+  font-size: 1.15em;
+  letter-spacing: 0.01em;
+}
+
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.log-box {
+  margin-top: 8px;
+  max-height: 260px;
+  overflow: auto;
+  border: 0.5px solid var(--table-border);
+  border-radius: 14px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--table-head) 70%, transparent);
+}
+
+@media (max-width: 760px) {
+  .panel {
+    padding: 12px;
+  }
+
+  .log-box {
+    max-height: 220px;
+  }
+}
