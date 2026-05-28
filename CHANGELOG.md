@@ -176,8 +176,8 @@
   - `Theme`: `Modern` / `Classic`
   - `Style`: `Light` / `Dark`
 - Added split stylesheets:
-  - `app/www/styles-modern.css`
-  - `app/www/styles-classic.css`
+  - `app/www/style-modern.css`
+  - `app/www/style-classic.css`
 - Frontend structure migrated from `public/` to `app/www/` (traffic-monitor layout style).
 - Backend container status normalization improved:
   - uses `status` when available

@@ -159,10 +159,9 @@ function applyThemeStyle() {
   document.documentElement.setAttribute("data-theme-style", state.themeStyle);
   const picked = THEME_STYLE_ITEMS.find((item) => item.value === state.themeStyle) || THEME_STYLE_ITEMS[0];
   const cssFile = (picked && picked.css) ? String(picked.css) : (state.themeStyle === "classic" ? "style-classic.css" : "style-modern.css");
-  const legacyCssFile = cssFile.startsWith("style-") ? `styles-${cssFile.slice("style-".length)}` : cssFile;
   els.themeStyleCss.setAttribute(
     "href",
-    "/" + legacyCssFile.replace(/^\/+/, "")
+    "/" + cssFile.replace(/^\/+/, "")
   );
   els.themeStyleSelect.value = state.themeStyle;
   updateThemeStyleButton();

@@ -37,8 +37,8 @@ Current release: see `CHANGELOG.md`.
 - `main.go` - Entrypoint for Go backend (serves API and embeds `app/www/*` assets).
 - `app/www/index.html` - UI shell.
 - `app/www/app.js` - frontend actions, dropdowns, and settings persistence.
-- `app/www/styles-modern.css` - Modern theme.
-- `app/www/styles-classic.css` - Classic theme.
+- `app/www/style-modern.css` - Modern theme.
+- `app/www/style-classic.css` - Classic theme.
 - `app/www/images/ui/*.svg` - UI icons.
 - `mikrotik/install.rsc` - RouterOS install/deploy script.
 - `scripts/install-to-router.sh` - helper for build/push and router import.

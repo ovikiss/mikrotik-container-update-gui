@@ -30,10 +30,6 @@ jobs:
           cp -a /tmp/mikrotik-ui-shared/ui/i18n/. app/www/i18n/
           cp -f /tmp/mikrotik-ui-shared/ui/common/theme-styles.json app/www/i18n/theme-styles.json
           cp -a /tmp/mikrotik-ui-shared/ui/css/. app/www/
-          # Backward-compatible aliases for existing runtime references.
-          [ -f app/www/style-modern.css ] && cp -f app/www/style-modern.css app/www/styles-modern.css || true
-          [ -f app/www/style-classic.css ] && cp -f app/www/style-classic.css app/www/styles-classic.css || true
-          [ -f app/www/style-glass.css ] && cp -f app/www/style-glass.css app/www/styles-glass.css || true
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
