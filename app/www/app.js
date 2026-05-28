@@ -355,6 +355,39 @@ async function initAppearance() {
   renderLanguageMenu();
 }
 
+function applyHeaderControlsConfig(cfg) {
+  const controlsRoot = document.querySelector(".controls");
+  if (!controlsRoot || !cfg || typeof cfg !== "object") return;
+  const controls = new Map();
+  controlsRoot.querySelectorAll("[data-header-control]").forEach((el) => {
+    controls.set(el.getAttribute("data-header-control"), el);
+  });
+
+  const visible = (cfg.visible && typeof cfg.visible === "object") ? cfg.visible : {};
+  controls.forEach((el, key) => {
+    if (Object.prototype.hasOwnProperty.call(visible, key) && visible[key] === false) {
+      el.style.display = "none";
+    } else {
+      el.style.display = "";
+    }
+  });
+
+  if (Array.isArray(cfg.order)) {
+    cfg.order.forEach((key) => {
+      const el = controls.get(String(key));
+      if (el) controlsRoot.appendChild(el);
+    });
+  }
+}
+
+async function loadHeaderControlsConfig() {
+  const q = `?_=${Date.now()}`;
+  try {
+    const cfg = await fetch("/i18n/header-controls.json" + q).then((r) => r.json());
+    applyHeaderControlsConfig(cfg);
+  } catch (_) {}
+}
+
 async function setLanguage(value) {
   state.lang = value === "ro" ? "ro" : "en";
   applyLanguage();
@@ -1016,6 +1049,7 @@ async function start() {
     if (["25", "50", "100"].includes(String(localFont))) state.fontSize = String(localFont);
   } catch (_) {}
   await loadThemeStylesConfig();
+  await loadHeaderControlsConfig();
   await initAppearance();
   await loadContainers();
 }
