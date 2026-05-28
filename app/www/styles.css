@@ -34,6 +34,96 @@
   -webkit-overflow-scrolling: touch;
 }
 
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 0.5px solid var(--border);
+  background: color-mix(in srgb, var(--card-strong) 85%, transparent);
+  box-shadow: var(--glass-inset);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.btn,
+.rollback-select {
+  min-height: 36px;
+  border-radius: 12px;
+  border: 0.5px solid var(--border);
+  background: color-mix(in srgb, var(--card-strong) 88%, transparent);
+  color: var(--text);
+  font: inherit;
+  padding: 0 12px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--glass-inset);
+}
+
+.btn {
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--border) 70%, #8bb2ff 30%);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn:disabled,
+.rollback-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn.bulk-update-btn {
+  background: linear-gradient(135deg, rgba(71, 126, 224, 0.95), rgba(89, 141, 233, 0.95));
+  color: #fff;
+  border-color: rgba(182, 196, 255, 0.55);
+  box-shadow: 0 8px 20px rgba(40, 86, 168, 0.34);
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btn.tiny {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.btn.danger {
+  border-color: rgba(229, 96, 96, 0.35);
+  background: color-mix(in srgb, rgba(229, 96, 96, 0.18) 55%, var(--card-strong) 45%);
+}
+
+.rollback-select {
+  min-width: 220px;
+  max-width: 100%;
+}
+
 .log-box {
   margin-top: 8px;
   max-height: 260px;
@@ -47,6 +137,23 @@
 @media (max-width: 760px) {
   .panel {
     padding: 12px;
+  }
+
+  .toolbar {
+    gap: 6px;
+  }
+
+  .btn,
+  .rollback-select {
+    width: 100%;
+  }
+
+  .row-actions {
+    width: 100%;
+  }
+
+  .rollback-select {
+    min-width: 0;
   }
 
   .log-box {
