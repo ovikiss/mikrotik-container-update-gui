@@ -102,6 +102,14 @@
   box-shadow: var(--glass-inset);
 }
 
+.btn.bulk-update-btn.is-ready,
+.btn.bulk-update-btn.is-selected,
+.btn.tiny.is-ready {
+  background: color-mix(in srgb, var(--bar-max) 28%, var(--card-strong) 72%);
+  border-color: color-mix(in srgb, var(--bar-max) 56%, var(--border) 44%);
+  color: var(--text);
+}
+
 .row-actions {
   display: grid;
   grid-template-columns: auto auto minmax(190px, 1fr) auto;

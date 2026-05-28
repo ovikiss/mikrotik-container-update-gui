@@ -678,6 +678,7 @@ function renderRows() {
         const selectedTarget = state.rollbackTargetById[container.id] || "";
         const channelSwitchPending = isChannelSwitchPending(container, selectedTarget);
         const allowUpdate = (checkState.state === "available" || channelSwitchPending) && !updateLocked;
+        btn.classList.toggle("is-ready", allowUpdate);
         btn.classList.toggle("hidden", !allowUpdate);
         if (updateLocked) {
           btn.dataset.staticDisabled = "1";
