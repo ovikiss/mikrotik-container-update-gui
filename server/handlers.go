@@ -579,6 +579,18 @@ func (s *Server) CheckContainerImage(ctx context.Context, container map[string]i
 	if normalizedLocalImageID != "" && remoteNormalized != "" && normalizedLocalImageID == remoteNormalized {
 		upToDate = true
 	}
+
+	// Fallback: on multi-arch registries, local image-id may match the selected manifest digest
+	// instead of config digest. Use rollback resolver to obtain manifest digest and compare too.
+	if !upToDate && normalizedLocalImageID != "" {
+		if rollbackRef, rbErr := s.RegistryClient.ResolveRollbackImageReference(ctx, remoteImageRef, arch); rbErr == nil {
+			manifestNormalized := registry.NormalizeDigest(rollbackRef.ManifestDigest)
+			if manifestNormalized != "" && normalizedLocalImageID == manifestNormalized {
+				upToDate = true
+			}
+		}
+	}
+
 	res["upToDate"] = upToDate
 	res["remoteConfigDigest"] = remote.RemoteConfigDigest
 
