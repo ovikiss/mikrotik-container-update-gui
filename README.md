@@ -1,4 +1,4 @@
-# MikroTik Container Update GUI
+﻿# MikroTik Container Update GUI
 
 Containerized Dockhand-style web UI for RouterOS container update and rollback management.
 
@@ -44,6 +44,7 @@ Current release: see `CHANGELOG.md`.
 - `scripts/install-to-router.sh` - helper for build/push and router import.
 - `.github/workflows/ci.yml` - syntax and Docker build checks.
 - `.github/workflows/docker-publish.yml` - multi-arch GHCR publish workflow.
+- `.github/workflows/docker-publish.yml` - syncs latest shared UI from `ovikiss/mikrotik-ui-shared` before Docker build (automatic, no local sync script).
 - `.github/workflows/housekeeping.yml` - cleanup workflow for old runs/images.
 
 ## Build Locally
@@ -96,3 +97,4 @@ UI endpoint:
 
 ## Trademark Notice
 - MikroTik name and logo are official trademarks of MikroTik.
+
