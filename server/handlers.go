@@ -862,6 +862,26 @@ func (s *Server) RunVersionUpdate(ctx context.Context, container map[string]inte
 
 	cID, _ := container["id"].(string)
 
+	// Preflight: ensure desired target resolves to a pullable manifest *before* stop/remove.
+	// This avoids taking the container down when registry/tag is temporarily broken (e.g. GHCR 404 on nested manifest).
+	preflightRef, preflightErr := s.RegistryClient.ResolveRollbackImageReference(ctx, desiredImageRef, arch)
+	if preflightErr != nil || preflightRef == nil || strings.TrimSpace(preflightRef.PinnedImage) == "" {
+		msg := "Update preflight failed: target image manifest is unavailable. No changes were applied."
+		if preflightErr != nil {
+			msg = msg + " " + preflightErr.Error()
+		}
+		return nil, &ApiUserError{
+			Message: msg,
+			Status:  http.StatusBadGateway,
+			Details: map[string]interface{}{
+				"container":      cID,
+				"image":          desiredImageRef,
+				"targetImageRef": desiredImageRef,
+				"arch":           arch,
+			},
+		}
+	}
+
 	// Salvează backup pre-update
 	if rollbackRef, err := s.RegistryClient.ResolveRollbackImageReference(ctx, currentImageRef, arch); err == nil {
 		s.SettingsManager.SaveRollbackPoint(container, currentImageRef, rollbackRef.PinnedImage, rollbackRef.ManifestDigest, "update")
@@ -1082,3 +1102,6 @@ func (s *Server) forceRepullContainer(ctx context.Context, container map[string]
 	_, _ = s.RouterOsClient.StartContainer(ctx, newContainerRef)
 	return nil
 }
+
+
+
