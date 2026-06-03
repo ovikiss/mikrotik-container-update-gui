@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.2 - 2026-06-04
+
+- **Shared header baseline alignment refined.**
+  The universal header now aligns the project title text on the same lower baseline across `Modern`, `Classic`, and `Glass`, keeping `Container Update GUI` and `Traffic Monitor` visually consistent with the MikroTik wordmark.
+
 ## v0.5.1 - 2026-06-04
 
 - **Dynamic header version badge.**
