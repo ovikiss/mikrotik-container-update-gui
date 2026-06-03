@@ -663,11 +663,50 @@ function formatActivityDetails(obj) {
   if (typeof obj === "string") {
     return obj;
   }
+  if (Array.isArray(obj)) {
+    return obj
+      .map((entry, index) => {
+        const containerName = entry?.container?.name || `item ${index + 1}`;
+        const containerId = entry?.container?.id ? ` (${entry.container.id})` : "";
+        const result = entry?.result || {};
+        const imageRef = result?.imageRef || entry?.imageRef || "-";
+        const imageTag = extractImageReference(imageRef) || imageRef;
+        const mode = result?.mode || entry?.mode || "-";
+        const warning = entry?.warning || result?.warning || "";
+        const rollbackOptions = Array.isArray(result?.rollbackOptions)
+          ? result.rollbackOptions.map((option) => option?.label || option?.tag || extractImageReference(option?.imageRef || "")).filter(Boolean)
+          : [];
+        const statusLabel = typeof result?.upToDate === "boolean"
+          ? (result.upToDate ? "up to date" : "update available")
+          : (entry?.ok === true ? "ok" : "unknown");
+
+        const lines = [
+          `${containerName}${containerId}`,
+          `  status: ${statusLabel}`,
+          `  image: ${imageTag}`,
+          `  mode: ${mode}`
+        ];
+        if (rollbackOptions.length > 0) {
+          lines.push(`  rollback options: ${rollbackOptions.join(", ")}`);
+        }
+        if (warning) {
+          lines.push(`  warning: ${String(warning).replace(/\s+/g, " ").trim()}`);
+        }
+        return lines.join("\n");
+      })
+      .join("\n\n");
+  }
   return JSON.stringify(obj, null, 2);
 }
 
 function summarizeActivityDetails(obj) {
   if (obj === undefined || obj === null) return "";
+  if (Array.isArray(obj)) {
+    const total = obj.length;
+    const okCount = obj.filter((entry) => entry?.ok === true).length;
+    const failedCount = total - okCount;
+    return `${total} results • ${okCount} ok${failedCount > 0 ? ` • ${failedCount} failed` : ""}`;
+  }
   if (typeof obj === "string") {
     const compact = obj.trim().replace(/\s+/g, " ");
     return compact.length > 96 ? `${compact.slice(0, 93)}...` : compact;
