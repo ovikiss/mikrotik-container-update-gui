@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.0 - 2026-06-04
+
+- **Shared UI system finalized for release alignment.**
+  MCUG now consumes the shared header, menus, translations, logos, and theme assets from `mikrotik-ui-shared` in the same way as Traffic Monitor.
+- **Glass theme layout refined.**
+  Container table proportions, image wrapping, and row action spacing were tightened so Glass behaves much closer to Modern and Classic without the previous scroll-heavy layout.
+- **Activity feed readability improved.**
+  Large action payloads are now summarized into readable result blocks instead of dumping raw JSON walls directly into the table cell.
+- **Release documentation refreshed.**
+  README and release notes were rewritten to match the Go runtime, shared UI pipeline, current install flow, and version dropdown behavior.
+
 ## v0.4.17 - 2026-05-28
 
 - **Shared theme sync extended for future themes.**

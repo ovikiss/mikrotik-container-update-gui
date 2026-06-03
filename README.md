@@ -1,57 +1,61 @@
 # MikroTik Container Update GUI
 
-Containerized Dockhand-style web UI for RouterOS container update and rollback management.
+MikroTik Container Update GUI is a lightweight Go web application for RouterOS container lifecycle management. It auto-discovers your RouterOS containers, checks registry digests, offers safe update flows, and keeps rollback targets persistent on disk.
 
-Current release: see `CHANGELOG.md`.
+Current release: `v0.5.0`
 
-## Features
-- Auto-discovers all containers from RouterOS REST API.
-- Per-container actions: `check`, `backup`, `update`, `rollback`.
+## Highlights
+- Auto-discovers all RouterOS containers through the REST API.
+- Per-container actions: `Check`, `Update`, `Rollback`.
 - Bulk actions: `Check selected/all`, `Update selected/all`.
-- `check` uses digest comparison (local vs registry).
-- `update` stores an automatic pre-update backup (`lastKnownGood`).
-- `rollback` uses persistent backup logic (without relying on RouterOS `/container/rollback`).
-- MCUG self-protection:
-- `container-update-gui` cannot `update`/`rollback`/`backup` itself from the same UI session
-- use `mikrotik/install.rsc` (or helper script) for MCUG upgrades
-- Universal rollback/version dropdown policy:
-- always includes `latest` and `stable` when available in registry
-- always appends newest `3 x v*` semantic tags
-- for `latest`/`stable` entries, UI label includes resolved version (example: `stable (v1.96.5)`)
-- Channel switch support:
-- selecting `stable`/`latest` and pressing `Update` switches container tracking channel
-- Rollback channel tracking behavior:
-- when container is on `stable` or `latest` and rollback target is a fixed `v*`, rollback applies that version but keeps original channel tag
-- when rollback target is explicitly `stable` or `latest`, container tracking changes to that selected channel
-- Bulk update UX:
-- Dockhand-style `Update all` button states (`pending`, `ready`, `empty`, `selected`)
-- manual row selection updates the button label/count live (`Update selected (N)`)
-- after `Check`, rows with `update available` are auto-selected
-- Transient update reconnect handling:
-- if UI sees `Failed to fetch` during update, it treats it as a reconnect event, waits briefly, and refreshes container status instead of showing hard failure
-- Theme selector: `Modern` / `Classic`.
-- Style selector: `Auto` / `Light` / `Dark`.
-- UI settings and rollback state persist in `/data`.
+- Digest-based update detection between the running local image and the remote registry tag.
+- Persistent rollback targets stored in `/data`, without depending on RouterOS native `/container/rollback`.
+- Universal version dropdown policy:
+  - includes the active channel tag such as `latest` or `stable`
+  - adds the other channel when available
+  - appends the newest `3 x v*` semantic tags
+  - shows resolved labels like `latest (v0.5.0)` or `stable (v1.98.4)`
+- Channel-aware updates and rollbacks:
+  - switching from `stable` to `latest` or back is handled through the same `Update` action
+  - rolling back to a fixed `v*` keeps the original channel when the container tracks `latest` or `stable`
+  - rolling back to `latest` or `stable` explicitly changes the tracked channel
+- Dockhand-style bulk update UX:
+  - rows with available updates are auto-selected after `Check`
+  - manual selection updates the bulk action label live
+  - one-click action locking prevents accidental double update or double rollback
+- Shared UI system via `mikrotik-ui-shared`:
+  - shared header, menus, logos, theme assets, translations, and CSS
+  - dynamic theme catalog support for future shared themes
+  - consistent `Modern`, `Classic`, and `Glass` styling
+- Activity table with readable summaries instead of raw JSON walls.
+- Settings and rollback state persist in `/data`.
 
-## Repository Structure
-- `main.go` - Entrypoint for Go backend (serves API and embeds `app/www/*` assets).
-- `app/www/index.html` - UI shell.
-- `app/www/app.js` - frontend actions, dropdowns, and settings persistence.
-- `scripts/sync-ui-shared.sh` - syncs shared UI assets from `mikrotik-ui-shared` into the working tree or Docker build.
-- `app/i18n/`, `app/www/common/`, `app/www/images/`, `app/www/styles*.css`, `app/settings.json` - generated from `mikrotik-ui-shared` at build time and intentionally not tracked as source.
-- `mikrotik/install.rsc` - RouterOS install/deploy script.
-- `scripts/install-to-router.sh` - helper for build/push and router import.
-- `.github/workflows/ci.yml` - syntax and Docker build checks.
-- `.github/workflows/docker-publish.yml` - multi-arch GHCR publish workflow.
-- `.github/workflows/housekeeping.yml` - cleanup workflow for old runs/images.
+## Architecture
+- `main.go`
+  Go backend serving the RouterOS API bridge and the embedded web app.
+- `app/www/index.html`
+  UI shell for the shared dashboard layout.
+- `app/www/app.js`
+  Project-specific frontend logic for container actions, activity rendering, and settings persistence.
+- `scripts/sync-ui-shared.sh`
+  Pulls shared UI assets from `mikrotik-ui-shared` during local prep or Docker builds.
+- `mikrotik/install.rsc`
+  RouterOS install script for first deploy or clean reinstall.
+- `scripts/install-to-router.sh`
+  Helper that builds, pushes, uploads, imports, and cleans old install scripts on the router.
 
-## Build Locally
+## Local Build
 ```bash
 docker build -t ghcr.io/ovikiss/mikrotik-container-update-gui:local .
 ```
-The Docker build syncs shared UI assets automatically from `mikrotik-ui-shared`. For local Go builds outside Docker, run `./scripts/sync-ui-shared.sh` first.
 
-## Run Locally
+The Docker build automatically syncs the current shared UI assets. For local non-Docker development, run:
+
+```bash
+./scripts/sync-ui-shared.sh
+```
+
+## Local Run
 ```bash
 docker run --rm -p 8090:8090 \
   -e HTTP_PORT=8090 \
@@ -62,37 +66,38 @@ docker run --rm -p 8090:8090 \
   ghcr.io/ovikiss/mikrotik-container-update-gui:local
 ```
 
-## Install on MikroTik
-1. Edit top variables in `mikrotik/install.rsc`:
-- `mcugImage` (default `ghcr.io/ovikiss/mikrotik-container-update-gui:latest`)
-- `mcugDataPath` (default `/usb1/mcug-data`)
-- `mcugRootDir` (default `/usb1/containers/container-update-gui`)
-- `mcugHttpPort` (default `8090`)
-- `mcugVeth` (default `veth-mcug`)
-- `mcugApiUser` / `mcugApiPassword`
+## MikroTik Install
+1. Edit the variables at the top of `mikrotik/install.rsc`:
+   - `mcugImage`
+   - `mcugDataPath`
+   - `mcugRootDir`
+   - `mcugHttpPort`
+   - `mcugVeth`
+   - `mcugApiUser`
+   - `mcugApiPassword`
+2. Run the helper:
 
-2. Run helper:
 ```bash
 ./scripts/install-to-router.sh admin@192.168.88.1
 ```
 
 Manual alternative:
+
 ```bash
 scp mikrotik/install.rsc admin@192.168.88.1:install-container-update-gui.rsc
 ssh admin@192.168.88.1 '/import file-name=install-container-update-gui.rsc'
 ```
 
-UI endpoint:
+Default UI endpoint:
 - `http://<router-lan-ip>:8090/`
 
-## Notes
-- Runtime is delivered as a single compiled Go binary (no external runtime files required, static files embedded).
-- `ROUTEROS_BASE_URL` is optional; if empty, the app auto-detects the container default gateway.
-- Docker Hub tag listing has a dedicated fallback to reliably include `v*` tags when `/v2/.../tags/list` is incomplete.
-- Registry tag listing also uses pagination (`Link rel=next`) for high-tag repositories.
-- RouterOS install script ensures NAT rule `mcug-gui` exists and is updated (create-or-update behavior).
-- `mcug-gui` NAT `to-addresses` is derived from the runtime `veth` container IP.
-- Persistent state (`settings.json`, `rollback-state.json`) lives in `/data` (recommended on USB storage).
+## Runtime Notes
+- Runtime is a single compiled Go binary with embedded static assets.
+- `ROUTEROS_BASE_URL` is optional; when omitted, the app auto-detects the container default gateway.
+- Registry tag discovery supports pagination and Docker Hub fallback logic so `stable`, `latest`, and `v*` tags stay visible.
+- Transient `Failed to fetch` during update is treated as a reconnect event and followed by an automatic refresh instead of a hard UI failure.
+- The install script manages a single NAT rule with comment `mcug-gui` and removes older legacy rules automatically.
+- Persistent state such as `settings.json` and rollback metadata lives in `/data`, ideally on USB storage.
 
 ## Trademark Notice
-- MikroTik name and logo are official trademarks of MikroTik.
+MikroTik name and logo are official trademarks of MikroTik.
