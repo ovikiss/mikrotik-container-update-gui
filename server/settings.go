@@ -15,6 +15,7 @@ type Settings struct {
 	Theme      string `json:"theme"`
 	ThemeStyle string `json:"theme_style"` // Can also map to themeStyle in incoming JSON
 	Language   string `json:"language,omitempty"`
+	FontSize   string `json:"font_size,omitempty"`
 }
 
 type RollbackSnapshot struct {
@@ -69,6 +70,7 @@ func (m *SettingsManager) ReadSettings() Settings {
 		Theme:      "auto",
 		ThemeStyle: "modern",
 		Language:   "auto",
+		FontSize:   "100",
 	}
 
 	bytes, err := os.ReadFile(m.settingsPath)
@@ -102,10 +104,20 @@ func (m *SettingsManager) ReadSettings() Settings {
 		language = "auto"
 	}
 
+	fontSizeRaw, _ := raw["font_size"].(string)
+	if fontSizeRaw == "" {
+		fontSizeRaw, _ = raw["fontSize"].(string)
+	}
+	fontSize := strings.TrimSpace(fontSizeRaw)
+	if fontSize != "25" && fontSize != "50" && fontSize != "100" {
+		fontSize = "100"
+	}
+
 	return Settings{
 		Theme:      theme,
 		ThemeStyle: themeStyle,
 		Language:   language,
+		FontSize:   fontSize,
 	}
 }
 
@@ -117,6 +129,7 @@ func (m *SettingsManager) WriteSettings(patch map[string]interface{}) (Settings,
 		Theme:      "auto",
 		ThemeStyle: "modern",
 		Language:   "auto",
+		FontSize:   "100",
 	}
 
 	bytes, err := os.ReadFile(m.settingsPath)
@@ -136,6 +149,13 @@ func (m *SettingsManager) WriteSettings(patch map[string]interface{}) (Settings,
 			if languageRaw, _ := raw["language"].(string); languageRaw != "" {
 				current.Language = languageRaw
 			}
+			fontSizeRaw, _ := raw["font_size"].(string)
+			if fontSizeRaw == "" {
+				fontSizeRaw, _ = raw["fontSize"].(string)
+			}
+			if fontSizeRaw != "" {
+				current.FontSize = fontSizeRaw
+			}
 		}
 	}
 
@@ -154,6 +174,11 @@ func (m *SettingsManager) WriteSettings(patch map[string]interface{}) (Settings,
 	if lang, ok := patch["language"].(string); ok {
 		current.Language = strings.ToLower(strings.TrimSpace(lang))
 	}
+	if fs, ok := patch["font_size"].(string); ok {
+		current.FontSize = strings.TrimSpace(fs)
+	} else if fs, ok := patch["fontSize"].(string); ok {
+		current.FontSize = strings.TrimSpace(fs)
+	}
 
 	if current.Theme != "auto" && !slugPattern.MatchString(current.Theme) {
 		current.Theme = "auto"
@@ -163,6 +188,9 @@ func (m *SettingsManager) WriteSettings(patch map[string]interface{}) (Settings,
 	}
 	if current.Language != "auto" && !languageCodePattern.MatchString(current.Language) {
 		current.Language = "auto"
+	}
+	if current.FontSize != "25" && current.FontSize != "50" && current.FontSize != "100" {
+		current.FontSize = "100"
 	}
 
 	if err := os.MkdirAll(m.DataDir, 0755); err != nil {

@@ -10,6 +10,7 @@ const state = {
   rollbackTargetById: {},
   theme: "auto",
   themeStyle: "modern",
+  fontSize: "100",
   language: "auto",
   resolvedLanguage: "en",
   themeOptions: [],
@@ -20,29 +21,35 @@ const state = {
 };
 
 const els = {
-  themeStyleCss: document.getElementById("themeStyleCss"),
-  brandText: document.getElementById("brandText"),
+  themeStyleCss: document.getElementById("theme-style-css"),
+  brandText: document.getElementById("brand-text"),
   subtitle: document.getElementById("subtitle"),
-  themeStyleLabel: document.getElementById("themeStyleLabel"),
-  themeLabel: document.getElementById("themeLabel"),
-  languageLabel: document.getElementById("languageLabel"),
-  themeToggle: document.getElementById("themeToggle"),
-  themeMenu: document.getElementById("themeMenu"),
-  themeCurrentIcon: document.getElementById("themeCurrentIcon"),
-  themeCurrentLabel: document.getElementById("themeCurrentLabel"),
-  themeSelect: document.getElementById("themeSelect"),
-  themeDropdown: document.getElementById("themeDropdown"),
-  themeStyleToggle: document.getElementById("themeStyleToggle"),
-  themeStyleMenu: document.getElementById("themeStyleMenu"),
-  themeStyleCurrentLabel: document.getElementById("themeStyleCurrentLabel"),
-  themeStyleSelect: document.getElementById("themeStyleSelect"),
-  themeStyleDropdown: document.getElementById("themeStyleDropdown"),
-  languageToggle: document.getElementById("languageToggle"),
-  languageMenu: document.getElementById("languageMenu"),
-  languageCurrentIcon: document.getElementById("languageCurrentIcon"),
-  languageCurrentLabel: document.getElementById("languageCurrentLabel"),
-  languageSelect: document.getElementById("languageSelect"),
-  languageDropdown: document.getElementById("languageDropdown"),
+  themeStyleLabel: document.getElementById("theme-style-label"),
+  themeLabel: document.getElementById("theme-label"),
+  fontLabel: document.getElementById("font-label"),
+  languageLabel: document.getElementById("lang-label"),
+  themeToggle: document.getElementById("theme-toggle"),
+  themeMenu: document.getElementById("theme-menu"),
+  themeCurrentIcon: document.getElementById("theme-current-icon"),
+  themeCurrentLabel: document.getElementById("theme-current-label"),
+  themeSelect: document.getElementById("theme"),
+  themeDropdown: document.getElementById("theme-dropdown"),
+  themeStyleToggle: document.getElementById("theme-style-toggle"),
+  themeStyleMenu: document.getElementById("theme-style-menu"),
+  themeStyleCurrentLabel: document.getElementById("theme-style-current-label"),
+  themeStyleSelect: document.getElementById("theme-style"),
+  themeStyleDropdown: document.getElementById("theme-style-dropdown"),
+  fontToggle: document.getElementById("font-toggle"),
+  fontMenu: document.getElementById("font-menu"),
+  fontCurrentLabel: document.getElementById("font-current-label"),
+  fontSelect: document.getElementById("font-size"),
+  fontDropdown: document.getElementById("font-dropdown"),
+  languageToggle: document.getElementById("lang-toggle"),
+  languageMenu: document.getElementById("lang-menu"),
+  languageCurrentIcon: document.getElementById("lang-current-icon"),
+  languageCurrentLabel: document.getElementById("lang-current-label"),
+  languageSelect: document.getElementById("lang"),
+  languageDropdown: document.getElementById("lang-dropdown"),
   selectAll: document.getElementById("selectAll"),
   bulkCheckButton: document.getElementById("bulkCheckButton"),
   containersBody: document.getElementById("containersBody"),
@@ -78,6 +85,12 @@ const DEFAULT_THEME_STYLE_OPTIONS = [
 const DEFAULT_LANGUAGE_OPTIONS = [
   { code: "en", label: "English", icon: "/images/lang/en.svg", file: "/i18n/en.json" },
   { code: "ro", label: "Română", icon: "/images/lang/ro.svg", file: "/i18n/ro.json" }
+];
+
+const FONT_ITEMS = [
+  { value: "25", labelKey: "fontLegacy" },
+  { value: "50", labelKey: "fontCurrent" },
+  { value: "100", labelKey: "fontLarge" }
 ];
 
 const prefersDarkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -210,11 +223,6 @@ async function fetchJson(path) {
     throw new Error(`HTTP ${response.status} for ${path}`);
   }
   return response.json();
-}
-
-function closeDropdownMenu(menuEl, toggleEl) {
-  menuEl.classList.remove("open");
-  toggleEl.setAttribute("aria-expanded", "false");
 }
 
 function closeThemeMenu() {
@@ -416,16 +424,17 @@ async function loadSettings() {
   state.themeStyle = state.themeStyleOptions.some((entry) => entry.value === (incoming.theme_style || incoming.themeStyle))
     ? (incoming.theme_style || incoming.themeStyle)
     : (state.themeStyleOptions[0]?.value || "modern");
+  const requestedFontSize = String(incoming.font_size || incoming.fontSize || "100").trim();
+  state.fontSize = FONT_ITEMS.some((entry) => entry.value === requestedFontSize) ? requestedFontSize : "100";
   const requestedLanguage = String(incoming.language || "auto").trim().toLowerCase();
   state.language = state.languageOptions.some((entry) => entry.code === requestedLanguage) ? requestedLanguage : "auto";
 }
 
 async function loadUiRegistries() {
-  const [themeOptions, themeStyleOptions, languageOptions, headerControls] = await Promise.allSettled([
+  const [themeOptions, themeStyleOptions, languageOptions] = await Promise.allSettled([
     fetchJson("/common/theme-options.json"),
     fetchJson("/common/theme-styles.json"),
-    fetchJson("/i18n/languages.json"),
-    fetchJson("/common/header-controls.json")
+    fetchJson("/i18n/languages.json")
   ]);
 
   state.themeOptions = normalizeThemeOptions(themeOptions.status === "fulfilled" ? themeOptions.value : DEFAULT_THEME_OPTIONS);
@@ -435,7 +444,6 @@ async function loadUiRegistries() {
     { code: "auto", labelKey: "auto", icon: "/images/ui/theme-auto.svg", file: "" },
     ...languageItems.filter((entry) => entry.code !== "auto")
   ];
-  state.headerControls = headerControls.status === "fulfilled" ? headerControls.value : null;
 }
 
 async function loadTranslationsForLanguage(languageCode) {
@@ -1080,19 +1088,15 @@ async function runBulkAction(action) {
 }
 
 els.themeToggle.addEventListener("click", () => {
-  const open = els.themeMenu.classList.toggle("open");
-  els.themeToggle.setAttribute("aria-expanded", open ? "true" : "false");
-  if (open) {
-    closeThemeStyleMenu();
-  }
+  toggleDropdownMenu(els.themeMenu, els.themeToggle, [closeThemeStyleMenu, closeLanguageMenu]);
 });
 
 els.themeStyleToggle.addEventListener("click", () => {
-  const open = els.themeStyleMenu.classList.toggle("open");
-  els.themeStyleToggle.setAttribute("aria-expanded", open ? "true" : "false");
-  if (open) {
-    closeThemeMenu();
-  }
+  toggleDropdownMenu(els.themeStyleMenu, els.themeStyleToggle, [closeThemeMenu, closeLanguageMenu]);
+});
+
+els.languageToggle.addEventListener("click", () => {
+  toggleDropdownMenu(els.languageMenu, els.languageToggle, [closeThemeMenu, closeThemeStyleMenu]);
 });
 
 document.addEventListener("click", (event) => {
@@ -1101,6 +1105,9 @@ document.addEventListener("click", (event) => {
   }
   if (!els.themeStyleDropdown.contains(event.target)) {
     closeThemeStyleMenu();
+  }
+  if (!els.languageDropdown.contains(event.target)) {
+    closeLanguageMenu();
   }
 });
 
