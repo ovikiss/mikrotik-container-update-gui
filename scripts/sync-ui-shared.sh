@@ -57,11 +57,9 @@ copy_tree_files() {
   done
 }
 
-mkdir -p "${ROOT_DIR}/app/i18n"
 mkdir -p "${ROOT_DIR}/app/www/common"
 mkdir -p "${ROOT_DIR}/app/www/images"
 
-copy_tree_files "${SHARED_DIR}/ui/i18n" "${ROOT_DIR}/app/i18n"
 copy_tree_files "${SHARED_DIR}/ui/common" "${ROOT_DIR}/app/www/common"
 copy_tree_files "${SHARED_DIR}/ui/images" "${ROOT_DIR}/app/www/images"
 
