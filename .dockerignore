@@ -6,3 +6,9 @@ npm-debug.log*
 .env.local
 .env.*.local
 README.md
+app/i18n/
+app/www/common/
+app/www/images/
+app/www/styles-classic.css
+app/www/styles-glass.css
+app/www/styles-modern.css

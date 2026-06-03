@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 type Settings struct {
 	Theme      string `json:"theme"`
 	ThemeStyle string `json:"theme_style"` // Can also map to themeStyle in incoming JSON
+	Language   string `json:"language,omitempty"`
 }
 
 type RollbackSnapshot struct {
@@ -45,6 +47,9 @@ type SettingsManager struct {
 	mu           sync.RWMutex
 }
 
+var languageCodePattern = regexp.MustCompile(`^[a-z][a-z0-9-_]{1,15}$`)
+var slugPattern = regexp.MustCompile(`^[a-z][a-z0-9-_]{1,63}$`)
+
 func NewSettingsManager(dataDir string) *SettingsManager {
 	if dataDir == "" {
 		dataDir = "./data"
@@ -63,6 +68,7 @@ func (m *SettingsManager) ReadSettings() Settings {
 	defaultSettings := Settings{
 		Theme:      "auto",
 		ThemeStyle: "modern",
+		Language:   "auto",
 	}
 
 	bytes, err := os.ReadFile(m.settingsPath)
@@ -77,7 +83,7 @@ func (m *SettingsManager) ReadSettings() Settings {
 
 	theme, _ := raw["theme"].(string)
 	theme = strings.ToLower(strings.TrimSpace(theme))
-	if theme != "auto" && theme != "light" && theme != "dark" {
+	if theme != "auto" && !slugPattern.MatchString(theme) {
 		theme = "auto"
 	}
 
@@ -86,13 +92,20 @@ func (m *SettingsManager) ReadSettings() Settings {
 		themeStyleRaw, _ = raw["themeStyle"].(string)
 	}
 	themeStyle := strings.ToLower(strings.TrimSpace(themeStyleRaw))
-	if themeStyle != "modern" && themeStyle != "classic" && themeStyle != "glass" {
+	if !slugPattern.MatchString(themeStyle) {
 		themeStyle = "modern"
+	}
+
+	languageRaw, _ := raw["language"].(string)
+	language := strings.ToLower(strings.TrimSpace(languageRaw))
+	if language != "auto" && !languageCodePattern.MatchString(language) {
+		language = "auto"
 	}
 
 	return Settings{
 		Theme:      theme,
 		ThemeStyle: themeStyle,
+		Language:   language,
 	}
 }
 
@@ -103,6 +116,7 @@ func (m *SettingsManager) WriteSettings(patch map[string]interface{}) (Settings,
 	current := Settings{
 		Theme:      "auto",
 		ThemeStyle: "modern",
+		Language:   "auto",
 	}
 
 	bytes, err := os.ReadFile(m.settingsPath)
@@ -119,6 +133,9 @@ func (m *SettingsManager) WriteSettings(patch map[string]interface{}) (Settings,
 			if themeStyleRaw != "" {
 				current.ThemeStyle = themeStyleRaw
 			}
+			if languageRaw, _ := raw["language"].(string); languageRaw != "" {
+				current.Language = languageRaw
+			}
 		}
 	}
 
@@ -134,12 +151,18 @@ func (m *SettingsManager) WriteSettings(patch map[string]interface{}) (Settings,
 	if ts != "" {
 		current.ThemeStyle = strings.ToLower(strings.TrimSpace(ts))
 	}
+	if lang, ok := patch["language"].(string); ok {
+		current.Language = strings.ToLower(strings.TrimSpace(lang))
+	}
 
-	if current.Theme != "auto" && current.Theme != "light" && current.Theme != "dark" {
+	if current.Theme != "auto" && !slugPattern.MatchString(current.Theme) {
 		current.Theme = "auto"
 	}
-	if current.ThemeStyle != "modern" && current.ThemeStyle != "classic" && current.ThemeStyle != "glass" {
+	if !slugPattern.MatchString(current.ThemeStyle) {
 		current.ThemeStyle = "modern"
+	}
+	if current.Language != "auto" && !languageCodePattern.MatchString(current.Language) {
+		current.Language = "auto"
 	}
 
 	if err := os.MkdirAll(m.DataDir, 0755); err != nil {

@@ -2,6 +2,7 @@
 FROM golang:1.22-alpine AS builder
 
 WORKDIR /build
+RUN apk add --no-cache git
 
 # Copy go.mod and download dependencies (if any)
 COPY go.mod ./
@@ -9,6 +10,10 @@ COPY go.mod ./
 
 # Copy the rest of the source code and static assets
 COPY . .
+
+ARG UI_SHARED_REPO=https://github.com/ovikiss/mikrotik-ui-shared.git
+ARG UI_SHARED_REF=main
+RUN UI_SHARED_REPO="$UI_SHARED_REPO" UI_SHARED_REF="$UI_SHARED_REF" sh scripts/sync-ui-shared.sh
 
 # Build the Go application statically
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o mcug main.go

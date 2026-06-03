@@ -1,4 +1,4 @@
-﻿# MikroTik Container Update GUI
+# MikroTik Container Update GUI
 
 Containerized Dockhand-style web UI for RouterOS container update and rollback management.
 
@@ -37,20 +37,19 @@ Current release: see `CHANGELOG.md`.
 - `main.go` - Entrypoint for Go backend (serves API and embeds `app/www/*` assets).
 - `app/www/index.html` - UI shell.
 - `app/www/app.js` - frontend actions, dropdowns, and settings persistence.
-- `app/www/style-modern.css` - Modern theme.
-- `app/www/style-classic.css` - Classic theme.
-- `app/www/images/ui/*.svg` - UI icons.
+- `scripts/sync-ui-shared.sh` - syncs shared UI assets from `mikrotik-ui-shared` into the working tree or Docker build.
+- `app/www/common/`, `app/www/images/`, `app/www/styles-*.css`, `app/i18n/` - generated from `mikrotik-ui-shared` at build time and intentionally not tracked as source.
 - `mikrotik/install.rsc` - RouterOS install/deploy script.
 - `scripts/install-to-router.sh` - helper for build/push and router import.
 - `.github/workflows/ci.yml` - syntax and Docker build checks.
 - `.github/workflows/docker-publish.yml` - multi-arch GHCR publish workflow.
-- `.github/workflows/docker-publish.yml` - syncs latest shared UI from `ovikiss/mikrotik-ui-shared` before Docker build (automatic, no local sync script).
 - `.github/workflows/housekeeping.yml` - cleanup workflow for old runs/images.
 
 ## Build Locally
 ```bash
 docker build -t ghcr.io/ovikiss/mikrotik-container-update-gui:local .
 ```
+The Docker build syncs shared UI assets automatically from `mikrotik-ui-shared`. For local Go builds outside Docker, run `./scripts/sync-ui-shared.sh` first.
 
 ## Run Locally
 ```bash
@@ -97,4 +96,3 @@ UI endpoint:
 
 ## Trademark Notice
 - MikroTik name and logo are official trademarks of MikroTik.
-

@@ -72,9 +72,14 @@ func (s *Server) Mux() *http.ServeMux {
 	if err != nil {
 		log.Fatalf("failed to create static sub-fs: %v", err)
 	}
+	i18nFS, err := fs.Sub(s.StaticFS, "app/i18n")
+	if err != nil {
+		log.Fatalf("failed to create i18n sub-fs: %v", err)
+	}
 
 	fileServer := http.FileServer(http.FS(subFS))
 	mux.Handle("/", fileServer)
+	mux.Handle("/i18n/", http.StripPrefix("/i18n/", http.FileServer(http.FS(i18nFS))))
 
 	return mux
 }
