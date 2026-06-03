@@ -18,6 +18,8 @@ import (
 //go:embed app/www/* app/i18n/* app/branding.json
 var staticFS embed.FS
 
+var Version = "dev"
+
 func main() {
 	log.Println("Starting MikroTik Container Update GUI in Go...")
 
@@ -69,7 +71,7 @@ func main() {
 	sm := server.NewSettingsManager(dataDir)
 
 	// Creează serverul HTTP
-	srv := server.NewServer(rClient, regClient, sm, staticFS)
+	srv := server.NewServer(rClient, regClient, sm, staticFS, Version)
 
 	httpServer := &http.Server{
 		Addr:    ":" + port,

@@ -14,10 +14,11 @@ COPY . .
 ARG UI_SHARED_REPO=https://github.com/ovikiss/mikrotik-ui-shared.git
 ARG UI_SHARED_REF=main
 ARG UI_SHARED_REV=unknown
+ARG APP_VERSION=dev
 RUN UI_SHARED_REPO="$UI_SHARED_REPO" UI_SHARED_REF="$UI_SHARED_REF" UI_SHARED_REV="$UI_SHARED_REV" sh scripts/sync-ui-shared.sh
 
 # Build the Go application statically
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o mcug main.go
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=${APP_VERSION}" -o mcug main.go
 
 # Stage 2: Create a minimal runtime image
 FROM alpine:3.20

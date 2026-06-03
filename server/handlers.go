@@ -33,11 +33,12 @@ type Server struct {
 	RegistryClient  *registry.RegistryClient
 	SettingsManager *SettingsManager
 	StaticFS        fs.FS
+	AppVersion      string
 	SelfContainer   string
 	SelfImageHint   string
 }
 
-func NewServer(rClient *routeros.RouterOsClient, regClient *registry.RegistryClient, sm *SettingsManager, staticFS fs.FS) *Server {
+func NewServer(rClient *routeros.RouterOsClient, regClient *registry.RegistryClient, sm *SettingsManager, staticFS fs.FS, appVersion string) *Server {
 	selfContainer := strings.ToLower(strings.TrimSpace(os.Getenv("SELF_CONTAINER_NAME")))
 	if selfContainer == "" {
 		selfContainer = "container-update-gui"
@@ -52,6 +53,7 @@ func NewServer(rClient *routeros.RouterOsClient, regClient *registry.RegistryCli
 		RegistryClient:  regClient,
 		SettingsManager: sm,
 		StaticFS:        staticFS,
+		AppVersion:      strings.TrimSpace(appVersion),
 		SelfContainer:   selfContainer,
 		SelfImageHint:   selfImageHint,
 	}
@@ -179,9 +181,18 @@ func (s *Server) handleBranding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+	var payload map[string]interface{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		JSONResponse(w, http.StatusInternalServerError, map[string]interface{}{
+			"ok":    false,
+			"error": "branding_invalid",
+		})
+		return
+	}
+	if v := strings.TrimSpace(s.AppVersion); v != "" {
+		payload["version"] = v
+	}
+	JSONResponse(w, http.StatusOK, payload)
 }
 
 func (s *Server) handlePostSettings(w http.ResponseWriter, r *http.Request) {
@@ -1162,5 +1173,4 @@ func (s *Server) forceRepullContainer(ctx context.Context, container map[string]
 	_, _ = s.RouterOsClient.StartContainer(ctx, newContainerRef)
 	return nil
 }
-
 

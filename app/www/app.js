@@ -24,6 +24,7 @@ const state = {
 const els = {
   themeStyleCss: document.getElementById("theme-style-css"),
   brandText: document.getElementById("brand-text"),
+  brandVersion: document.getElementById("brand-version"),
   subtitle: document.getElementById("subtitle"),
   themeStyleLabel: document.getElementById("theme-style-label"),
   themeLabel: document.getElementById("theme-label"),
@@ -76,6 +77,7 @@ const els = {
 
 function refreshHeaderElements() {
   els.brandText = document.getElementById("brand-text");
+  els.brandVersion = document.getElementById("brand-version");
   els.subtitle = document.getElementById("subtitle");
   els.themeStyleLabel = document.getElementById("theme-style-label");
   els.themeLabel = document.getElementById("theme-label");
@@ -147,6 +149,12 @@ function formatTemplate(template, params = {}) {
 function t(key, params = {}) {
   const value = state.branding[key] ?? state.translations[key] ?? state.fallbackTranslations[key] ?? key;
   return formatTemplate(value, params);
+}
+
+function brandingVersionLabel() {
+  const raw = String(state.branding.version || "").trim();
+  if (!raw) return "";
+  return /^v\s*/i.test(raw) ? raw.replace(/^v\s*/i, "v ") : `v ${raw}`;
 }
 
 function normalizeList(items, fallback = []) {
@@ -389,6 +397,7 @@ function translateContainerStatus(status) {
 function applyStaticTranslations() {
   document.title = t("appTitle");
   if (els.brandText) els.brandText.textContent = t("brandText");
+  if (els.brandVersion) els.brandVersion.textContent = brandingVersionLabel();
   if (els.subtitle) els.subtitle.textContent = t("subtitle");
   if (els.themeStyleLabel) els.themeStyleLabel.textContent = t("themeStyleMenuLabel");
   if (els.themeLabel) els.themeLabel.textContent = t("themeMenuLabel");

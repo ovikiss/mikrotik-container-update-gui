@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.1 - 2026-06-04
+
+- **Dynamic header version badge.**
+  The shared header now shows a small, subtle version label beside the branding text.
+- **Build-driven version reporting.**
+  MCUG injects its current app version into branding responses at runtime from the Go binary, so future upgrades automatically show the active release without editing JSON files.
+
 ## v0.5.0 - 2026-06-04
 
 - **Shared UI system finalized for release alignment.**
