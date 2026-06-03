@@ -666,20 +666,90 @@ function formatActivityDetails(obj) {
   return JSON.stringify(obj, null, 2);
 }
 
+function summarizeActivityDetails(obj) {
+  if (obj === undefined || obj === null) return "";
+  if (typeof obj === "string") {
+    const compact = obj.trim().replace(/\s+/g, " ");
+    return compact.length > 96 ? `${compact.slice(0, 93)}...` : compact;
+  }
+  if (typeof obj !== "object") {
+    return String(obj);
+  }
+
+  const containerName = obj?.container?.name;
+  const containerId = obj?.container?.id;
+  const result = obj?.result;
+  const mode = result?.mode || obj?.mode;
+  const imageRef = result?.imageRef || obj?.imageRef;
+  const imageTag = imageRef ? extractImageReference(imageRef) : "";
+  const localImageId = result?.localImageId || obj?.localImageId;
+  const remoteDigest = result?.remoteConfigDigest || obj?.remoteConfigDigest;
+  const rollbackOptions = Array.isArray(result?.rollbackOptions)
+    ? result.rollbackOptions.length
+    : Array.isArray(obj?.rollbackOptions)
+      ? obj.rollbackOptions.length
+      : 0;
+
+  const parts = [];
+  if (containerName) {
+    parts.push(containerId ? `${containerName} (${containerId})` : containerName);
+  }
+  if (imageTag) parts.push(imageTag);
+  if (mode) parts.push(mode);
+  if (rollbackOptions > 0) parts.push(`${rollbackOptions} rollback options`);
+  if (typeof result?.upToDate === "boolean") {
+    parts.push(result.upToDate ? "up to date" : "update available");
+  }
+  if (localImageId && remoteDigest) {
+    parts.push(localImageId === remoteDigest ? "digest matched" : "digest changed");
+  } else if (obj?.ok === true) {
+    parts.push("ok");
+  }
+
+  if (parts.length > 0) {
+    return parts.join(" • ");
+  }
+
+  const keys = Object.keys(obj);
+  return keys.length > 0 ? `JSON payload (${keys.length} keys)` : "";
+}
+
 function appendLog(message, obj) {
   if (!els.logBox) return;
   const row = document.createElement("tr");
   const timeCell = document.createElement("td");
   const eventCell = document.createElement("td");
   const detailsCell = document.createElement("td");
+  const detailsText = formatActivityDetails(obj);
+  const detailsSummary = summarizeActivityDetails(obj);
 
   timeCell.className = "activity-time mono";
   eventCell.className = "activity-event";
-  detailsCell.className = "activity-details mono";
+  detailsCell.className = "activity-details";
 
   timeCell.textContent = nowLabel();
   eventCell.textContent = message;
-  detailsCell.textContent = formatActivityDetails(obj);
+
+  if (!detailsText) {
+    const empty = document.createElement("span");
+    empty.className = "activity-details-empty";
+    empty.textContent = t("activityNoDetails");
+    detailsCell.appendChild(empty);
+  } else {
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    const pre = document.createElement("pre");
+
+    details.className = "activity-details-toggle";
+    summary.className = "activity-details-summary";
+    pre.className = "activity-details-code mono";
+
+    summary.textContent = detailsSummary || t("activityShowDetails");
+    pre.textContent = detailsText;
+
+    details.append(summary, pre);
+    detailsCell.appendChild(details);
+  }
 
   row.append(timeCell, eventCell, detailsCell);
   els.logBox.prepend(row);
