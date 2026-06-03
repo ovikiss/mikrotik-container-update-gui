@@ -25,7 +25,7 @@
         </div>
 
         <div class="table-wrap">
-          <table>
+          <table class="data-table containers-table">
             <thead>
               <tr>
                 <th><input id="selectAll" type="checkbox" /></th>
@@ -44,7 +44,18 @@
 
       <section class="panel">
         <h2 id="activityTitle"></h2>
-        <pre id="logBox" class="log-box"></pre>
+        <div class="table-wrap activity-wrap">
+          <table class="data-table activity-table">
+            <thead>
+              <tr>
+                <th id="activityTimeHeader"></th>
+                <th id="activityEventHeader"></th>
+                <th id="activityDetailsHeader"></th>
+              </tr>
+            </thead>
+            <tbody id="logBox"></tbody>
+          </table>
+        </div>
       </section>
     </main>
 

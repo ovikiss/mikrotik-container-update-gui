@@ -57,6 +57,9 @@ const els = {
   rowTemplate: document.getElementById("rowTemplate"),
   logBox: document.getElementById("logBox"),
   activityTitle: document.getElementById("activityTitle"),
+  activityTimeHeader: document.getElementById("activityTimeHeader"),
+  activityEventHeader: document.getElementById("activityEventHeader"),
+  activityDetailsHeader: document.getElementById("activityDetailsHeader"),
   connectionBadge: document.getElementById("connectionBadge"),
   countLabel: document.getElementById("countLabel"),
   headerName: document.getElementById("headerName"),
@@ -409,6 +412,9 @@ function applyStaticTranslations() {
   els.headerImage.textContent = t("image");
   els.headerActions.textContent = t("actions");
   els.activityTitle.textContent = t("activity");
+  els.activityTimeHeader.textContent = t("activityTime");
+  els.activityEventHeader.textContent = t("activityEvent");
+  els.activityDetailsHeader.textContent = t("activityDetails");
   if (state.connection) {
     setConnection(state.connection.ok, state.connection.key, state.connection.params || {}, true);
   }
@@ -650,12 +656,36 @@ function nowLabel() {
   return new Date().toLocaleTimeString();
 }
 
+function formatActivityDetails(obj) {
+  if (obj === undefined || obj === null || (typeof obj === "object" && Object.keys(obj).length === 0)) {
+    return "";
+  }
+  if (typeof obj === "string") {
+    return obj;
+  }
+  return JSON.stringify(obj, null, 2);
+}
+
 function appendLog(message, obj) {
-  const line = `[${nowLabel()}] ${message}`;
-  if (obj === undefined) {
-    els.logBox.textContent = `${line}\n${els.logBox.textContent}`;
-  } else {
-    els.logBox.textContent = `${line}\n${JSON.stringify(obj, null, 2)}\n\n${els.logBox.textContent}`;
+  if (!els.logBox) return;
+  const row = document.createElement("tr");
+  const timeCell = document.createElement("td");
+  const eventCell = document.createElement("td");
+  const detailsCell = document.createElement("td");
+
+  timeCell.className = "activity-time mono";
+  eventCell.className = "activity-event";
+  detailsCell.className = "activity-details mono";
+
+  timeCell.textContent = nowLabel();
+  eventCell.textContent = message;
+  detailsCell.textContent = formatActivityDetails(obj);
+
+  row.append(timeCell, eventCell, detailsCell);
+  els.logBox.prepend(row);
+
+  while (els.logBox.children.length > 60) {
+    els.logBox.lastElementChild.remove();
   }
 }
 
