@@ -38,7 +38,7 @@ Current release: see `CHANGELOG.md`.
 - `app/www/index.html` - UI shell.
 - `app/www/app.js` - frontend actions, dropdowns, and settings persistence.
 - `scripts/sync-ui-shared.sh` - syncs shared UI assets from `mikrotik-ui-shared` into the working tree or Docker build.
-- `app/www/common/`, `app/www/images/`, `app/www/styles-*.css`, `app/i18n/` - generated from `mikrotik-ui-shared` at build time and intentionally not tracked as source.
+- `app/i18n/`, `app/www/common/`, `app/www/images/`, `app/www/styles*.css`, `app/settings.json` - generated from `mikrotik-ui-shared` at build time and intentionally not tracked as source.
 - `mikrotik/install.rsc` - RouterOS install/deploy script.
 - `scripts/install-to-router.sh` - helper for build/push and router import.
 - `.github/workflows/ci.yml` - syntax and Docker build checks.
