@@ -11,7 +11,7 @@ const state = {
   theme: "auto",
   themeStyle: "modern",
   fontSize: "100",
-  language: "auto",
+  language: "en",
   resolvedLanguage: "en",
   themeOptions: [],
   themeStyleOptions: [],
@@ -94,6 +94,7 @@ const FONT_ITEMS = [
 ];
 
 const prefersDarkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+const SHARED_HEADER_OWNS_CONTROLS = Boolean(window.MikroTikSharedHeader && window.MikroTikSharedHeader.ownsControls);
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -197,7 +198,7 @@ function currentThemeStyleOption() {
 }
 
 function availableLanguageCode(code) {
-  return state.languageOptions.some((entry) => entry.code === code && entry.code !== "auto");
+  return state.languageOptions.some((entry) => entry.code === code);
 }
 
 function detectBrowserLanguage() {
@@ -237,6 +238,29 @@ function closeLanguageMenu() {
   closeDropdownMenu(els.languageMenu, els.languageToggle);
 }
 
+function renderFontMenu() {
+  if (!els.fontMenu) return;
+  els.fontMenu.innerHTML = "";
+  FONT_ITEMS.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "theme-item";
+    button.setAttribute("role", "option");
+    button.setAttribute("data-font-size", item.value);
+    button.innerHTML = `<img src="/images/ui/font-size.svg" alt="" /><span>${t(item.labelKey)}</span>`;
+    button.addEventListener("click", async () => {
+      closeFontMenu();
+      try {
+        await setFontSize(item.value);
+      } catch (error) {
+        appendLog(t("fontSaveFailed", { message: error.message }));
+      }
+    });
+    els.fontMenu.appendChild(button);
+  });
+  updateFontButton();
+}
+
 function getOptionLabel(entry) {
   if (!entry) return "";
   if (entry.labelKey) {
@@ -259,6 +283,13 @@ function updateThemeStyleButton() {
   const picked = currentThemeStyleOption();
   els.themeStyleCurrentLabel.textContent = getOptionLabel(picked);
   els.themeStyleSelect.value = state.themeStyle;
+}
+
+function updateFontButton() {
+  if (!els.fontCurrentLabel || !els.fontSelect) return;
+  const key = state.fontSize === "25" ? "fontLegacy" : state.fontSize === "100" ? "fontLarge" : "fontCurrent";
+  els.fontCurrentLabel.textContent = t(key);
+  els.fontSelect.value = state.fontSize;
 }
 
 function updateLanguageButton() {
@@ -285,6 +316,24 @@ function applyThemeStyle() {
   updateThemeStyleButton();
 }
 
+function closeFontMenu() {
+  closeDropdownMenu(els.fontMenu, els.fontToggle);
+}
+
+function toggleFontMenu() {
+  toggleDropdownMenu(els.fontMenu, els.fontToggle, [closeThemeMenu, closeThemeStyleMenu, closeLanguageMenu]);
+}
+
+function applyFontSize() {
+  const mode = (state.fontSize === "25" || state.fontSize === "50" || state.fontSize === "100") ? state.fontSize : "100";
+  state.fontSize = mode;
+  document.documentElement.setAttribute("data-font-size", mode);
+  if (els.fontSelect) {
+    els.fontSelect.value = mode;
+  }
+  updateFontButton();
+}
+
 function applyLanguage() {
   document.documentElement.lang = state.resolvedLanguage || "en";
   updateLanguageButton();
@@ -303,10 +352,18 @@ function applyStaticTranslations() {
   els.subtitle.textContent = t("subtitle");
   els.themeStyleLabel.textContent = t("themeStyleMenuLabel");
   els.themeLabel.textContent = t("themeMenuLabel");
+  els.fontLabel.textContent = t("fontSize");
   els.languageLabel.textContent = t("language");
   els.themeStyleMenu.setAttribute("aria-label", t("themeStyleOptions"));
   els.themeMenu.setAttribute("aria-label", t("themeOptions"));
+  els.fontMenu.setAttribute("aria-label", t("fontSize"));
   els.languageMenu.setAttribute("aria-label", t("languageOptions"));
+  const fontLegacy = document.getElementById("font-opt-legacy");
+  const fontCurrent = document.getElementById("font-opt-current");
+  const fontLarge = document.getElementById("font-opt-large");
+  if (fontLegacy) fontLegacy.textContent = t("fontLegacy");
+  if (fontCurrent) fontCurrent.textContent = t("fontCurrent");
+  if (fontLarge) fontLarge.textContent = t("fontLarge");
   els.bulkCheckButton.textContent = t("checkSelectedAll");
   els.headerName.textContent = t("name");
   els.headerId.textContent = t("id");
@@ -426,8 +483,15 @@ async function loadSettings() {
     : (state.themeStyleOptions[0]?.value || "modern");
   const requestedFontSize = String(incoming.font_size || incoming.fontSize || "100").trim();
   state.fontSize = FONT_ITEMS.some((entry) => entry.value === requestedFontSize) ? requestedFontSize : "100";
-  const requestedLanguage = String(incoming.language || "auto").trim().toLowerCase();
-  state.language = state.languageOptions.some((entry) => entry.code === requestedLanguage) ? requestedLanguage : "auto";
+  const requestedLanguage = String(incoming.language || "").trim().toLowerCase();
+  const browserLanguage = detectBrowserLanguage();
+  if (state.languageOptions.some((entry) => entry.code === requestedLanguage)) {
+    state.language = requestedLanguage;
+  } else if (state.languageOptions.some((entry) => entry.code === browserLanguage)) {
+    state.language = browserLanguage;
+  } else {
+    state.language = "en";
+  }
 }
 
 async function loadUiRegistries() {
@@ -440,17 +504,12 @@ async function loadUiRegistries() {
   state.themeOptions = normalizeThemeOptions(themeOptions.status === "fulfilled" ? themeOptions.value : DEFAULT_THEME_OPTIONS);
   state.themeStyleOptions = normalizeThemeStyleOptions(themeStyleOptions.status === "fulfilled" ? themeStyleOptions.value : DEFAULT_THEME_STYLE_OPTIONS);
   const languageItems = normalizeLanguageOptions(languageOptions.status === "fulfilled" ? languageOptions.value : DEFAULT_LANGUAGE_OPTIONS);
-  state.languageOptions = [
-    { code: "auto", labelKey: "auto", icon: "/images/ui/theme-auto.svg", file: "" },
-    ...languageItems.filter((entry) => entry.code !== "auto")
-  ];
+  state.languageOptions = languageItems.length ? languageItems : DEFAULT_LANGUAGE_OPTIONS.slice();
 }
 
 async function loadTranslationsForLanguage(languageCode) {
-  const requested = String(languageCode || "auto").trim().toLowerCase();
-  const browserLanguage = detectBrowserLanguage();
-  const resolved = requested === "auto" ? browserLanguage : requested;
-  state.resolvedLanguage = state.languageOptions.some((entry) => entry.code === resolved) && resolved !== "auto" ? resolved : "en";
+  const requested = String(languageCode || "en").trim().toLowerCase();
+  state.resolvedLanguage = state.languageOptions.some((entry) => entry.code === requested) ? requested : "en";
 
   const [fallbackResult, selectedResult] = await Promise.allSettled([
     fetchJson("/i18n/en.json"),
@@ -476,16 +535,20 @@ async function setThemeStyle(value) {
   await loadContainers();
 }
 
+async function setFontSize(value) {
+  const next = FONT_ITEMS.some((entry) => entry.value === value) ? value : "100";
+  state.fontSize = next;
+  await saveSettings({ font_size: next });
+  applyFontSize();
+}
+
 async function setLanguage(value) {
   const picked = state.languageOptions.find((entry) => entry.code === value) || state.languageOptions[0];
-  state.language = picked?.code || "auto";
+  state.language = picked?.code || "en";
   await saveSettings({ language: state.language });
   await loadTranslationsForLanguage(state.language);
   applyLanguage();
   applyStaticTranslations();
-  renderLanguageMenu();
-  renderThemeStyleMenu();
-  renderThemeMenu();
   renderRows();
 }
 
@@ -496,10 +559,7 @@ async function initAppearance() {
     appendLog(t("uiRegistryLoadFailedUsingBuiltInFallbacks", { message: error.message }));
     state.themeOptions = DEFAULT_THEME_OPTIONS.slice();
     state.themeStyleOptions = DEFAULT_THEME_STYLE_OPTIONS.slice();
-    state.languageOptions = [
-      { code: "auto", labelKey: "auto", icon: "/images/ui/theme-auto.svg", file: "" },
-      ...DEFAULT_LANGUAGE_OPTIONS.filter((entry) => entry.code !== "auto")
-    ];
+    state.languageOptions = DEFAULT_LANGUAGE_OPTIONS.slice();
   }
 
   try {
@@ -523,11 +583,15 @@ async function initAppearance() {
 
   applyThemeStyle();
   applyTheme();
+  applyFontSize();
   applyLanguage();
-  renderLanguageMenu();
-  renderThemeStyleMenu();
-  renderThemeMenu();
   applyStaticTranslations();
+  if (!SHARED_HEADER_OWNS_CONTROLS) {
+    renderLanguageMenu();
+    renderThemeStyleMenu();
+    renderThemeMenu();
+    renderFontMenu();
+  }
 }
 
 function nowLabel() {
@@ -1087,27 +1151,58 @@ async function runBulkAction(action) {
   }
 }
 
-els.themeToggle.addEventListener("click", () => {
-  toggleDropdownMenu(els.themeMenu, els.themeToggle, [closeThemeStyleMenu, closeLanguageMenu]);
-});
+if (!SHARED_HEADER_OWNS_CONTROLS) {
+  els.themeToggle.addEventListener("click", () => {
+    toggleDropdownMenu(els.themeMenu, els.themeToggle, [closeThemeStyleMenu, closeLanguageMenu]);
+  });
 
-els.themeStyleToggle.addEventListener("click", () => {
-  toggleDropdownMenu(els.themeStyleMenu, els.themeStyleToggle, [closeThemeMenu, closeLanguageMenu]);
-});
+  els.themeStyleToggle.addEventListener("click", () => {
+    toggleDropdownMenu(els.themeStyleMenu, els.themeStyleToggle, [closeThemeMenu, closeLanguageMenu]);
+  });
 
-els.languageToggle.addEventListener("click", () => {
-  toggleDropdownMenu(els.languageMenu, els.languageToggle, [closeThemeMenu, closeThemeStyleMenu]);
-});
+  els.fontToggle.addEventListener("click", () => {
+    toggleFontMenu();
+  });
 
-document.addEventListener("click", (event) => {
-  if (!els.themeDropdown.contains(event.target)) {
-    closeThemeMenu();
-  }
-  if (!els.themeStyleDropdown.contains(event.target)) {
-    closeThemeStyleMenu();
-  }
-  if (!els.languageDropdown.contains(event.target)) {
-    closeLanguageMenu();
+  els.languageToggle.addEventListener("click", () => {
+    toggleDropdownMenu(els.languageMenu, els.languageToggle, [closeThemeMenu, closeThemeStyleMenu]);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!els.themeDropdown.contains(event.target)) {
+      closeThemeMenu();
+    }
+    if (!els.themeStyleDropdown.contains(event.target)) {
+      closeThemeStyleMenu();
+    }
+    if (!els.fontDropdown.contains(event.target)) {
+      closeFontMenu();
+    }
+    if (!els.languageDropdown.contains(event.target)) {
+      closeLanguageMenu();
+    }
+  });
+}
+
+window.addEventListener("mikrotik:header-setting-changed", async (event) => {
+  const detail = event?.detail || {};
+  if (detail.key === "theme") {
+    state.theme = detail.value || state.theme;
+    applyTheme();
+    await loadContainers();
+  } else if (detail.key === "themeStyle") {
+    state.themeStyle = detail.value || state.themeStyle;
+    applyThemeStyle();
+    await loadContainers();
+  } else if (detail.key === "fontSize") {
+    state.fontSize = detail.value || state.fontSize;
+    applyFontSize();
+  } else if (detail.key === "language") {
+    state.language = detail.value || state.language;
+    await loadTranslationsForLanguage(state.language);
+    applyLanguage();
+    applyStaticTranslations();
+    renderRows();
   }
 });
 
@@ -1138,6 +1233,18 @@ if (prefersDarkQuery) {
 }
 
 async function start() {
+  if (window.MikroTikSharedHeader && typeof window.MikroTikSharedHeader.whenReady === "function") {
+    try {
+      await window.MikroTikSharedHeader.whenReady();
+      const sharedState = window.MikroTikSharedHeader.getState ? window.MikroTikSharedHeader.getState() : null;
+      if (sharedState) {
+        if (sharedState.theme) state.theme = sharedState.theme;
+        if (sharedState.themeStyle) state.themeStyle = sharedState.themeStyle;
+        if (sharedState.fontSize) state.fontSize = sharedState.fontSize;
+        if (sharedState.language) state.language = sharedState.language;
+      }
+    } catch (_) {}
+  }
   await initAppearance();
   await loadContainers();
 }

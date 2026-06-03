@@ -62,6 +62,14 @@ func NewSettingsManager(dataDir string) *SettingsManager {
 	}
 }
 
+func normalizeLanguage(v string) string {
+	lang := strings.ToLower(strings.TrimSpace(v))
+	if lang == "en" || lang == "ro" {
+		return lang
+	}
+	return "en"
+}
+
 func (m *SettingsManager) ReadSettings() Settings {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -69,7 +77,7 @@ func (m *SettingsManager) ReadSettings() Settings {
 	defaultSettings := Settings{
 		Theme:      "auto",
 		ThemeStyle: "modern",
-		Language:   "auto",
+		Language:   "en",
 		FontSize:   "100",
 	}
 
@@ -99,10 +107,7 @@ func (m *SettingsManager) ReadSettings() Settings {
 	}
 
 	languageRaw, _ := raw["language"].(string)
-	language := strings.ToLower(strings.TrimSpace(languageRaw))
-	if language != "auto" && !languageCodePattern.MatchString(language) {
-		language = "auto"
-	}
+	language := normalizeLanguage(languageRaw)
 
 	fontSizeRaw, _ := raw["font_size"].(string)
 	if fontSizeRaw == "" {
@@ -128,7 +133,7 @@ func (m *SettingsManager) WriteSettings(patch map[string]interface{}) (Settings,
 	current := Settings{
 		Theme:      "auto",
 		ThemeStyle: "modern",
-		Language:   "auto",
+		Language:   "en",
 		FontSize:   "100",
 	}
 
@@ -172,7 +177,7 @@ func (m *SettingsManager) WriteSettings(patch map[string]interface{}) (Settings,
 		current.ThemeStyle = strings.ToLower(strings.TrimSpace(ts))
 	}
 	if lang, ok := patch["language"].(string); ok {
-		current.Language = strings.ToLower(strings.TrimSpace(lang))
+		current.Language = normalizeLanguage(lang)
 	}
 	if fs, ok := patch["font_size"].(string); ok {
 		current.FontSize = strings.TrimSpace(fs)
@@ -186,9 +191,7 @@ func (m *SettingsManager) WriteSettings(patch map[string]interface{}) (Settings,
 	if !slugPattern.MatchString(current.ThemeStyle) {
 		current.ThemeStyle = "modern"
 	}
-	if current.Language != "auto" && !languageCodePattern.MatchString(current.Language) {
-		current.Language = "auto"
-	}
+	current.Language = normalizeLanguage(current.Language)
 	if current.FontSize != "25" && current.FontSize != "50" && current.FontSize != "100" {
 		current.FontSize = "100"
 	}
