@@ -13,7 +13,8 @@ COPY . .
 
 ARG UI_SHARED_REPO=https://github.com/ovikiss/mikrotik-ui-shared.git
 ARG UI_SHARED_REF=main
-RUN UI_SHARED_REPO="$UI_SHARED_REPO" UI_SHARED_REF="$UI_SHARED_REF" sh scripts/sync-ui-shared.sh
+ARG UI_SHARED_REV=unknown
+RUN UI_SHARED_REPO="$UI_SHARED_REPO" UI_SHARED_REF="$UI_SHARED_REF" UI_SHARED_REV="$UI_SHARED_REV" sh scripts/sync-ui-shared.sh
 
 # Build the Go application statically
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o mcug main.go

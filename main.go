@@ -15,7 +15,7 @@ import (
 	"github.com/ovikiss/mikrotik-container-update-gui/server"
 )
 
-//go:embed app/www/* app/i18n/*
+//go:embed app/www/* app/i18n/* app/branding.json
 var staticFS embed.FS
 
 func main() {

@@ -63,6 +63,7 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /api/health", s.handleHealth)
 	mux.HandleFunc("GET /api/containers", s.handleContainers)
 	mux.HandleFunc("GET /api/settings.json", s.handleGetSettings)
+	mux.HandleFunc("GET /branding.json", s.handleBranding)
 	mux.HandleFunc("POST /api/settings", s.handlePostSettings)
 	mux.HandleFunc("POST /api/containers/{id}/actions/{action}", s.handleContainerAction)
 	mux.HandleFunc("POST /api/containers/actions/{action}", s.handleBulkAction)
@@ -166,6 +167,21 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		"ok":       true,
 		"settings": settings,
 	})
+}
+
+func (s *Server) handleBranding(w http.ResponseWriter, r *http.Request) {
+	data, err := fs.ReadFile(s.StaticFS, "app/branding.json")
+	if err != nil {
+		JSONResponse(w, http.StatusNotFound, map[string]interface{}{
+			"ok":    false,
+			"error": "branding_not_found",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
 }
 
 func (s *Server) handlePostSettings(w http.ResponseWriter, r *http.Request) {
@@ -1146,6 +1162,5 @@ func (s *Server) forceRepullContainer(ctx context.Context, container map[string]
 	_, _ = s.RouterOsClient.StartContainer(ctx, newContainerRef)
 	return nil
 }
-
 
 

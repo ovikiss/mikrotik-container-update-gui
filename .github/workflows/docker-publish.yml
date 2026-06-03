@@ -20,17 +20,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Sync latest shared UI
+      - name: Capture shared revision
         run: |
           set -euo pipefail
           git clone --depth 1 https://github.com/ovikiss/mikrotik-ui-shared.git /tmp/mikrotik-ui-shared
-          mkdir -p app/www/images/ui app/www/images/lang app/www/i18n
-          cp -a /tmp/mikrotik-ui-shared/ui/images/ui/. app/www/images/ui/
-          cp -a /tmp/mikrotik-ui-shared/ui/images/lang/. app/www/images/lang/
-          cp -a /tmp/mikrotik-ui-shared/ui/i18n/. app/www/i18n/
-          cp -f /tmp/mikrotik-ui-shared/ui/common/theme-styles.json app/www/i18n/theme-styles.json
-          cp -f /tmp/mikrotik-ui-shared/ui/common/header-controls.json app/www/i18n/header-controls.json
-          cp -a /tmp/mikrotik-ui-shared/ui/css/. app/www/
+          echo "UI_SHARED_REV=$(git -C /tmp/mikrotik-ui-shared rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -60,6 +54,8 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: linux/arm/v7,linux/arm64
+          build-args: |
+            UI_SHARED_REV=${{ env.UI_SHARED_REV }}
           provenance: false
           sbom: false
           push: true
@@ -133,4 +129,3 @@ jobs:
               "https://api.github.com/users/${OWNER}/packages/container/${PACKAGE}/versions/${id}" >/dev/null
             echo "Deleted package version: ${id}"
           done
-

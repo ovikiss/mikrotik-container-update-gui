@@ -16,6 +16,7 @@ const state = {
   themeOptions: [],
   themeStyleOptions: [],
   languageOptions: [],
+  branding: {},
   translations: {},
   fallbackTranslations: {}
 };
@@ -70,6 +71,37 @@ const els = {
   bulkUpdateLabel: document.querySelector('[data-bulk-action="update"] .bulk-update-label')
 };
 
+function refreshHeaderElements() {
+  els.brandText = document.getElementById("brand-text");
+  els.subtitle = document.getElementById("subtitle");
+  els.themeStyleLabel = document.getElementById("theme-style-label");
+  els.themeLabel = document.getElementById("theme-label");
+  els.fontLabel = document.getElementById("font-label");
+  els.languageLabel = document.getElementById("lang-label");
+  els.themeToggle = document.getElementById("theme-toggle");
+  els.themeMenu = document.getElementById("theme-menu");
+  els.themeCurrentIcon = document.getElementById("theme-current-icon");
+  els.themeCurrentLabel = document.getElementById("theme-current-label");
+  els.themeSelect = document.getElementById("theme");
+  els.themeDropdown = document.getElementById("theme-dropdown");
+  els.themeStyleToggle = document.getElementById("theme-style-toggle");
+  els.themeStyleMenu = document.getElementById("theme-style-menu");
+  els.themeStyleCurrentLabel = document.getElementById("theme-style-current-label");
+  els.themeStyleSelect = document.getElementById("theme-style");
+  els.themeStyleDropdown = document.getElementById("theme-style-dropdown");
+  els.fontToggle = document.getElementById("font-toggle");
+  els.fontMenu = document.getElementById("font-menu");
+  els.fontCurrentLabel = document.getElementById("font-current-label");
+  els.fontSelect = document.getElementById("font-size");
+  els.fontDropdown = document.getElementById("font-dropdown");
+  els.languageToggle = document.getElementById("lang-toggle");
+  els.languageMenu = document.getElementById("lang-menu");
+  els.languageCurrentIcon = document.getElementById("lang-current-icon");
+  els.languageCurrentLabel = document.getElementById("lang-current-label");
+  els.languageSelect = document.getElementById("lang");
+  els.languageDropdown = document.getElementById("lang-dropdown");
+}
+
 const DEFAULT_THEME_OPTIONS = [
   { value: "auto", label: { en: "Auto", ro: "Auto" }, icon: "/images/ui/theme-auto.svg" },
   { value: "light", label: { en: "Light", ro: "Luminos" }, icon: "/images/ui/theme-light.svg" },
@@ -110,7 +142,7 @@ function formatTemplate(template, params = {}) {
 }
 
 function t(key, params = {}) {
-  const value = state.translations[key] ?? state.fallbackTranslations[key] ?? key;
+  const value = state.branding[key] ?? state.translations[key] ?? state.fallbackTranslations[key] ?? key;
   return formatTemplate(value, params);
 }
 
@@ -273,6 +305,7 @@ function getOptionLabel(entry) {
 }
 
 function updateThemeButton() {
+  if (!els.themeCurrentIcon || !els.themeCurrentLabel || !els.themeSelect) return;
   const picked = currentThemeOption();
   els.themeCurrentIcon.setAttribute("src", picked.icon || "/images/ui/theme-auto.svg");
   els.themeCurrentLabel.textContent = getOptionLabel(picked);
@@ -280,6 +313,7 @@ function updateThemeButton() {
 }
 
 function updateThemeStyleButton() {
+  if (!els.themeStyleCurrentLabel || !els.themeStyleSelect) return;
   const picked = currentThemeStyleOption();
   els.themeStyleCurrentLabel.textContent = getOptionLabel(picked);
   els.themeStyleSelect.value = state.themeStyle;
@@ -293,6 +327,7 @@ function updateFontButton() {
 }
 
 function updateLanguageButton() {
+  if (!els.languageCurrentIcon || !els.languageCurrentLabel || !els.languageSelect) return;
   const picked = currentLanguageOption() || state.languageOptions[0];
   if (picked?.icon) {
     els.languageCurrentIcon.setAttribute("src", picked.icon);
@@ -312,7 +347,9 @@ function applyTheme() {
 function applyThemeStyle() {
   const picked = currentThemeStyleOption();
   document.documentElement.setAttribute("data-theme-style", state.themeStyle);
-  els.themeStyleCss.setAttribute("href", `/${String(picked.css || `styles-${state.themeStyle}.css`).replace(/^\/+/, "")}`);
+  if (els.themeStyleCss) {
+    els.themeStyleCss.setAttribute("href", `/${String(picked.css || `styles-${state.themeStyle}.css`).replace(/^\/+/, "")}`);
+  }
   updateThemeStyleButton();
 }
 
@@ -348,16 +385,16 @@ function translateContainerStatus(status) {
 
 function applyStaticTranslations() {
   document.title = t("appTitle");
-  els.brandText.textContent = t("brandText");
-  els.subtitle.textContent = t("subtitle");
-  els.themeStyleLabel.textContent = t("themeStyleMenuLabel");
-  els.themeLabel.textContent = t("themeMenuLabel");
-  els.fontLabel.textContent = t("fontSize");
-  els.languageLabel.textContent = t("language");
-  els.themeStyleMenu.setAttribute("aria-label", t("themeStyleOptions"));
-  els.themeMenu.setAttribute("aria-label", t("themeOptions"));
-  els.fontMenu.setAttribute("aria-label", t("fontSize"));
-  els.languageMenu.setAttribute("aria-label", t("languageOptions"));
+  if (els.brandText) els.brandText.textContent = t("brandText");
+  if (els.subtitle) els.subtitle.textContent = t("subtitle");
+  if (els.themeStyleLabel) els.themeStyleLabel.textContent = t("themeStyleMenuLabel");
+  if (els.themeLabel) els.themeLabel.textContent = t("themeMenuLabel");
+  if (els.fontLabel) els.fontLabel.textContent = t("fontSize");
+  if (els.languageLabel) els.languageLabel.textContent = t("language");
+  if (els.themeStyleMenu) els.themeStyleMenu.setAttribute("aria-label", t("themeStyleOptions"));
+  if (els.themeMenu) els.themeMenu.setAttribute("aria-label", t("themeOptions"));
+  if (els.fontMenu) els.fontMenu.setAttribute("aria-label", t("fontSize"));
+  if (els.languageMenu) els.languageMenu.setAttribute("aria-label", t("languageOptions"));
   const fontLegacy = document.getElementById("font-opt-legacy");
   const fontCurrent = document.getElementById("font-opt-current");
   const fontLarge = document.getElementById("font-opt-large");
@@ -519,6 +556,15 @@ async function loadTranslationsForLanguage(languageCode) {
   state.translations = selectedResult.status === "fulfilled" ? selectedResult.value : state.fallbackTranslations;
 }
 
+async function loadBranding() {
+  try {
+    const branding = await fetchJson("/branding.json");
+    state.branding = branding && typeof branding === "object" ? branding : {};
+  } catch (error) {
+    state.branding = {};
+  }
+}
+
 async function setTheme(value) {
   const picked = state.themeOptions.find((entry) => entry.value === value) || state.themeOptions[0];
   state.theme = picked?.value || "auto";
@@ -564,6 +610,12 @@ async function initAppearance() {
 
   try {
     await loadSettings();
+  } catch (error) {
+    appendLog(t("settingsLoadFailedUsingDefaults", { message: error.message }));
+  }
+
+  try {
+    await loadBranding();
   } catch (error) {
     appendLog(t("settingsLoadFailedUsingDefaults", { message: error.message }));
   }
@@ -1243,6 +1295,7 @@ async function start() {
         if (sharedState.fontSize) state.fontSize = sharedState.fontSize;
         if (sharedState.language) state.language = sharedState.language;
       }
+      refreshHeaderElements();
     } catch (_) {}
   }
   await initAppearance();

@@ -59,9 +59,11 @@ copy_tree_files() {
 
 mkdir -p "${ROOT_DIR}/app/www/common"
 mkdir -p "${ROOT_DIR}/app/www/images"
+mkdir -p "${ROOT_DIR}/app/i18n"
 
 copy_tree_files "${SHARED_DIR}/ui/common" "${ROOT_DIR}/app/www/common"
 copy_tree_files "${SHARED_DIR}/ui/images" "${ROOT_DIR}/app/www/images"
+copy_tree_files "${SHARED_DIR}/ui/i18n" "${ROOT_DIR}/app/i18n"
 
 for src in "${SHARED_DIR}"/ui/css/style-*.css; do
   [ -e "$src" ] || continue
