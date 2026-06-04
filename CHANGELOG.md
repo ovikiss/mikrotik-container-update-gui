@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.4 - 2026-06-04
+
+- **Bulk update target refresh fixed.**
+  Bulk `Update selected/all` now refreshes each RouterOS container target immediately before execution, avoiding stale references after the first `remove + add` update in the same batch.
+- **Bulk execution order preserved.**
+  The backend now processes bulk actions in the exact order requested by the UI instead of relying on RouterOS list ordering.
+
 ## v0.5.3 - 2026-06-04
 
 - **Runtime slimmed down for low-resource MikroTik devices.**

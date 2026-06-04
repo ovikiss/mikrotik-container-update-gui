@@ -316,15 +316,24 @@ func (s *Server) handleBulkAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var targets []map[string]interface{}
-	idSet := make(map[string]bool)
-	for _, id := range payload.ContainerIDs {
-		idSet[id] = true
-	}
-
+	containerByID := make(map[string]map[string]interface{}, len(containers))
 	for _, c := range containers {
 		norm := NormalizeContainer(c, s.SelfContainer, s.SelfImageHint)
 		cID, _ := norm["id"].(string)
-		if len(payload.ContainerIDs) == 0 || idSet[cID] {
+		if cID != "" {
+			containerByID[cID] = norm
+		}
+	}
+
+	if len(payload.ContainerIDs) > 0 {
+		for _, id := range payload.ContainerIDs {
+			if norm, ok := containerByID[id]; ok {
+				targets = append(targets, norm)
+			}
+		}
+	} else {
+		for _, c := range containers {
+			norm := NormalizeContainer(c, s.SelfContainer, s.SelfImageHint)
 			targets = append(targets, norm)
 		}
 	}
@@ -332,9 +341,33 @@ func (s *Server) handleBulkAction(w http.ResponseWriter, r *http.Request) {
 	var results []map[string]interface{}
 	successCount := 0
 
-	for _, container := range targets {
-		cID, _ := container["id"].(string)
-		cName, _ := container["name"].(string)
+	for _, target := range targets {
+		container := target
+		cID, _ := target["id"].(string)
+		cName, _ := target["name"].(string)
+
+		if action == "update" || action == "backup" || action == "rollback" {
+			refreshed, found, refreshErr := s.resolveBulkTarget(ctx, target)
+			if refreshErr != nil {
+				results = append(results, map[string]interface{}{
+					"ok":        false,
+					"container": map[string]string{"id": cID, "name": cName},
+					"error":     refreshErr.Error(),
+				})
+				continue
+			}
+			if !found {
+				results = append(results, map[string]interface{}{
+					"ok":        false,
+					"container": map[string]string{"id": cID, "name": cName},
+					"error":     "Container no longer exists on RouterOS.",
+				})
+				continue
+			}
+			container = refreshed
+			cID, _ = container["id"].(string)
+			cName, _ = container["name"].(string)
+		}
 
 		singlePayload := make(map[string]interface{})
 		if action == "update" && payload.UpdateTargets != nil {
@@ -380,6 +413,35 @@ func (s *Server) handleBulkAction(w http.ResponseWriter, r *http.Request) {
 		"failedCount":  failedCount,
 		"results":      results,
 	})
+}
+
+func (s *Server) resolveBulkTarget(ctx context.Context, target map[string]interface{}) (map[string]interface{}, bool, error) {
+	containers, err := s.RouterOsClient.ListContainers(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to refresh container list: %w", err)
+	}
+
+	targetID, _ := target["id"].(string)
+	targetName, _ := target["name"].(string)
+
+	var nameMatch map[string]interface{}
+	for _, raw := range containers {
+		norm := NormalizeContainer(raw, s.SelfContainer, s.SelfImageHint)
+		currentID, _ := norm["id"].(string)
+		currentName, _ := norm["name"].(string)
+		if targetID != "" && currentID == targetID {
+			return norm, true, nil
+		}
+		if targetName != "" && currentName == targetName {
+			nameMatch = norm
+		}
+	}
+
+	if nameMatch != nil {
+		return nameMatch, true, nil
+	}
+
+	return nil, false, nil
 }
 
 func (s *Server) handleError(w http.ResponseWriter, err error) {
