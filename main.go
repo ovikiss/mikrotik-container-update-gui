@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"embed"
 	"log"
 	"net/http"
 	"os"
@@ -14,9 +13,6 @@ import (
 	"github.com/ovikiss/mikrotik-container-update-gui/routeros"
 	"github.com/ovikiss/mikrotik-container-update-gui/server"
 )
-
-//go:embed app/www/* app/i18n/* app/branding.json
-var staticFS embed.FS
 
 var Version = "dev"
 
@@ -36,6 +32,10 @@ func main() {
 	dataDir := os.Getenv("DATA_DIR")
 	if dataDir == "" {
 		dataDir = "./data"
+	}
+	staticDir := os.Getenv("STATIC_DIR")
+	if staticDir == "" {
+		staticDir = "./app"
 	}
 
 	// Pregătește configurația pentru clientul RouterOS din variabilele de mediu
@@ -71,11 +71,13 @@ func main() {
 	sm := server.NewSettingsManager(dataDir)
 
 	// Creează serverul HTTP
-	srv := server.NewServer(rClient, regClient, sm, staticFS, Version)
+	srv := server.NewServer(rClient, regClient, sm, staticDir, Version)
 
 	httpServer := &http.Server{
-		Addr:    ":" + port,
-		Handler: srv.Mux(),
+		Addr:              ":" + port,
+		Handler:           srv.Mux(),
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	// Pornire server în mod asincron

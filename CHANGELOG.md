@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.3 - 2026-06-04
+
+- **Runtime slimmed down for low-resource MikroTik devices.**
+  MCUG now serves static assets from disk instead of embedding them into the Go binary, reducing binary weight and aligning runtime layout more closely with Traffic Monitor.
+- **Container image footprint reduced.**
+  The Docker runtime image now uses a minimal `scratch` base with only the compiled binary, shared UI assets, branding data, and CA certificates.
+- **Lean server defaults added.**
+  HTTP server startup now applies conservative header and idle timeouts to keep the runtime safer and calmer on constrained hardware.
+
 ## v0.5.2 - 2026-06-04
 
 - **Shared header baseline alignment refined.**

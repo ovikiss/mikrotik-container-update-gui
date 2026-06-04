@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -32,13 +32,13 @@ type Server struct {
 	RouterOsClient  *routeros.RouterOsClient
 	RegistryClient  *registry.RegistryClient
 	SettingsManager *SettingsManager
-	StaticFS        fs.FS
+	StaticDir       string
 	AppVersion      string
 	SelfContainer   string
 	SelfImageHint   string
 }
 
-func NewServer(rClient *routeros.RouterOsClient, regClient *registry.RegistryClient, sm *SettingsManager, staticFS fs.FS, appVersion string) *Server {
+func NewServer(rClient *routeros.RouterOsClient, regClient *registry.RegistryClient, sm *SettingsManager, staticDir string, appVersion string) *Server {
 	selfContainer := strings.ToLower(strings.TrimSpace(os.Getenv("SELF_CONTAINER_NAME")))
 	if selfContainer == "" {
 		selfContainer = "container-update-gui"
@@ -52,7 +52,7 @@ func NewServer(rClient *routeros.RouterOsClient, regClient *registry.RegistryCli
 		RouterOsClient:  rClient,
 		RegistryClient:  regClient,
 		SettingsManager: sm,
-		StaticFS:        staticFS,
+		StaticDir:       staticDir,
 		AppVersion:      strings.TrimSpace(appVersion),
 		SelfContainer:   selfContainer,
 		SelfImageHint:   selfImageHint,
@@ -70,19 +70,11 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("POST /api/containers/{id}/actions/{action}", s.handleContainerAction)
 	mux.HandleFunc("POST /api/containers/actions/{action}", s.handleBulkAction)
 
-	// Servire fișiere statice din app/www
-	subFS, err := fs.Sub(s.StaticFS, "app/www")
-	if err != nil {
-		log.Fatalf("failed to create static sub-fs: %v", err)
-	}
-	i18nFS, err := fs.Sub(s.StaticFS, "app/i18n")
-	if err != nil {
-		log.Fatalf("failed to create i18n sub-fs: %v", err)
-	}
-
-	fileServer := http.FileServer(http.FS(subFS))
+	staticWWW := filepath.Join(s.StaticDir, "www")
+	staticI18N := filepath.Join(s.StaticDir, "i18n")
+	fileServer := http.FileServer(http.Dir(staticWWW))
 	mux.Handle("/", fileServer)
-	mux.Handle("/i18n/", http.StripPrefix("/i18n/", http.FileServer(http.FS(i18nFS))))
+	mux.Handle("/i18n/", http.StripPrefix("/i18n/", http.FileServer(http.Dir(staticI18N))))
 
 	return mux
 }
@@ -172,7 +164,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleBranding(w http.ResponseWriter, r *http.Request) {
-	data, err := fs.ReadFile(s.StaticFS, "app/branding.json")
+	data, err := os.ReadFile(filepath.Join(s.StaticDir, "branding.json"))
 	if err != nil {
 		JSONResponse(w, http.StatusNotFound, map[string]interface{}{
 			"ok":    false,
