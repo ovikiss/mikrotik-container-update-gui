@@ -338,6 +338,20 @@ func (s *Server) handleBulkAction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if action == "update" && len(targets) > 1 {
+		nonSelfTargets := make([]map[string]interface{}, 0, len(targets))
+		selfTargets := make([]map[string]interface{}, 0, 1)
+		for _, target := range targets {
+			isSelf, _ := target["isSelf"].(bool)
+			if isSelf {
+				selfTargets = append(selfTargets, target)
+				continue
+			}
+			nonSelfTargets = append(nonSelfTargets, target)
+		}
+		targets = append(nonSelfTargets, selfTargets...)
+	}
+
 	var results []map[string]interface{}
 	successCount := 0
 

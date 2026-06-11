@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.6 - 2026-06-11
+
+- **Bulk self-update ordering fixed.**
+  When `container-update-gui` is selected together with other containers, bulk update now processes all non-self containers first and runs the MCUG self-update last.
+- **Bulk selection count aligned with eligibility.**
+  The update button now reflects the real number of eligible selected containers instead of counting rows that would be filtered out later.
+
 ## v0.5.5 - 2026-06-11
 
 - **Browser language auto-detection refined.**

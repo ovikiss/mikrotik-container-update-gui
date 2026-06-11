@@ -915,7 +915,6 @@ function isChannelSwitchPending(container, selectedTargetImageRef) {
 
 function isContainerUpdateEligible(container) {
   if (!container) return false;
-  if (container.isSelf) return false;
   const checkAvailable = state.checkById[container.id]?.state === "available";
   const selectedTarget = state.rollbackTargetById[container.id] || "";
   const channelSwitchPending = isChannelSwitchPending(container, selectedTarget);
@@ -923,7 +922,7 @@ function isContainerUpdateEligible(container) {
 }
 
 function availableUpdatesCount() {
-  return state.containers.filter((container) => !container.isSelf && state.checkById[container.id]?.state === "available").length;
+  return state.containers.filter((container) => isContainerUpdateEligible(container)).length;
 }
 
 function refreshBulkUpdateButton() {
@@ -963,11 +962,11 @@ function refreshBulkUpdateButton() {
     if (selectedEligibleCount > 0) {
       els.bulkUpdateButton.classList.add("is-selected");
       iconEl.textContent = "↑";
-      labelEl.textContent = t("updateSelectedCount", { count: selectedCount });
+      labelEl.textContent = t("updateSelectedCount", { count: selectedEligibleCount });
     } else {
       els.bulkUpdateButton.classList.add("is-empty");
       iconEl.textContent = "↓";
-      labelEl.textContent = t("updateSelectedCount", { count: selectedCount });
+      labelEl.textContent = t("updateSelectedCount", { count: selectedEligibleCount });
     }
     return;
   }

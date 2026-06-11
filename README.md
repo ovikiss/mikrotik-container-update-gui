@@ -2,7 +2,7 @@
 
 MikroTik Container Update GUI is a lightweight Go web application for RouterOS container lifecycle management. It auto-discovers your RouterOS containers, checks registry digests, offers safe update flows, and keeps rollback targets persistent on disk.
 
-Current release: `v0.5.5`
+Current release: `v0.5.6`
 
 ## Highlights
 - Auto-discovers all RouterOS containers through the REST API.
