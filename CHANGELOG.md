@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.8 - 2026-06-11
+
+- **Automatic page refresh after update/rollback.**
+  After update or rollback, the UI now waits for the server to come back and reloads the page automatically once `/api/health` responds again.
+- **Transient post-update states reduced.**
+  This smooths over short-lived `unknown` / stale UI states that can appear immediately after container restart or self-update.
+
 ## v0.5.7 - 2026-06-11
 
 - **Rollback now preserves channel tracking.**

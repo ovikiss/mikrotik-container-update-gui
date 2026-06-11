@@ -821,6 +821,31 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function waitForServerRecoveryAndReload(options = {}) {
+  const initialDelay = Number.isFinite(options.initialDelay) ? options.initialDelay : 1800;
+  const interval = Number.isFinite(options.interval) ? options.interval : 1200;
+  const attempts = Number.isFinite(options.attempts) ? options.attempts : 20;
+
+  await sleep(initialDelay);
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(`/api/health?_=${Date.now()}`, { cache: "no-store" });
+      if (response.ok) {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set("_r", String(Date.now()));
+        window.location.replace(nextUrl.toString());
+        return true;
+      }
+    } catch (_) {
+    }
+
+    await sleep(interval);
+  }
+
+  return false;
+}
+
 function setBusy(value) {
   state.busy = value;
   const disabled = Boolean(value);
@@ -1240,14 +1265,23 @@ async function runSingleAction(id, action) {
       renderRows();
     } else {
       state.checkById = {};
-      await loadContainers();
+      if (action === "update" || action === "rollback") {
+        const reloaded = await waitForServerRecoveryAndReload();
+        if (!reloaded) {
+          await loadContainers();
+        }
+      } else {
+        await loadContainers();
+      }
     }
   } catch (error) {
     if (action === "update" && isTransientFetchDrop(error)) {
       appendLog(t("updateConnectionDropped", { id }));
-      await sleep(2200);
       state.checkById = {};
-      await loadContainers();
+      const reloaded = await waitForServerRecoveryAndReload({ initialDelay: 2200 });
+      if (!reloaded) {
+        await loadContainers();
+      }
     } else {
       appendLog(t("actionFailed", { action: t(`action${action[0].toUpperCase()}${action.slice(1)}`), id, message: error.message }), error.details || {});
     }
@@ -1340,14 +1374,23 @@ async function runBulkAction(action) {
       renderRows();
     } else {
       state.checkById = {};
-      await loadContainers();
+      if (action === "update" || action === "rollback") {
+        const reloaded = await waitForServerRecoveryAndReload();
+        if (!reloaded) {
+          await loadContainers();
+        }
+      } else {
+        await loadContainers();
+      }
     }
   } catch (error) {
     if (action === "update" && isTransientFetchDrop(error)) {
       appendLog(t("bulkUpdateConnectionDropped"));
-      await sleep(2200);
       state.checkById = {};
-      await loadContainers();
+      const reloaded = await waitForServerRecoveryAndReload({ initialDelay: 2200 });
+      if (!reloaded) {
+        await loadContainers();
+      }
     } else {
       appendLog(t("bulkFailed", { action: t(`action${action[0].toUpperCase()}${action.slice(1)}`), message: error.message }), error.details || {});
     }
