@@ -250,13 +250,19 @@ function detectBrowserLanguage() {
     ...(Array.isArray(navigator.languages) ? navigator.languages : [])
   ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
   for (const candidate of raw) {
-    if (availableLanguageCode(candidate)) {
-      return candidate;
-    }
     const base = candidate.split("-")[0];
-    if (availableLanguageCode(base)) {
-      return base;
+    if (base === "ro" && availableLanguageCode("ro")) {
+      return "ro";
     }
+    if (base === "en" && availableLanguageCode("en")) {
+      return "en";
+    }
+  }
+  if (availableLanguageCode("en")) {
+    return "en";
+  }
+  if (availableLanguageCode("ro")) {
+    return "ro";
   }
   return state.languageOptions[0]?.code || "en";
 }

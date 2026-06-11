@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.5 - 2026-06-11
+
+- **Browser language auto-detection refined.**
+  When no saved language is present, MCUG now resolves `ro` / `ro-*` to Romanian and `en` / `en-*` to English based on the browser locale.
+- **Explicit English fallback added.**
+  Any browser locale outside Romanian and English now falls back cleanly to `en` instead of picking an arbitrary first language option.
+
 ## v0.5.4 - 2026-06-04
 
 - **Bulk update target refresh fixed.**
