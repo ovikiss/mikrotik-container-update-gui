@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.7 - 2026-06-11
+
+- **Rollback now preserves channel tracking.**
+  Downgrading to a fixed version (for example `v0.5.5`) now keeps the original tracking channel such as `latest` or `stable` after the older image is installed.
+- **Update visibility after downgrade fixed.**
+  Containers rolled back to an older version can immediately detect the newer release again, without getting stuck on a pinned `@sha256` remote image.
+
 ## v0.5.6 - 2026-06-11
 
 - **Bulk self-update ordering fixed.**

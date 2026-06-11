@@ -757,10 +757,27 @@ func (s *Server) RunVersionRollback(ctx context.Context, container map[string]in
 	previousImage = strings.TrimSpace(previousImage)
 	arch, _ := raw["arch"].(string)
 
+	previousRef := ""
+	if parsedPrevious, parseErr := registry.ParseImageReference(previousImage); parseErr == nil {
+		previousRef = strings.ToLower(strings.TrimSpace(parsedPrevious.Reference))
+	}
+
+	targetRef := ""
+	if parsedTarget, parseErr := registry.ParseImageReference(target); parseErr == nil {
+		targetRef = strings.ToLower(strings.TrimSpace(parsedTarget.Reference))
+	}
+
 	rollbackRef, err := s.RegistryClient.ResolveRollbackImageReference(ctx, target, arch)
 	pinnedTarget := target
 	if err == nil && rollbackRef.PinnedImage != "" {
 		pinnedTarget = rollbackRef.PinnedImage
+	}
+
+	trackingImage := target
+	previousTrackedChannel := previousRef == "latest" || previousRef == "stable"
+	targetTracksChannel := targetRef == "latest" || targetRef == "stable"
+	if previousTrackedChannel && !targetTracksChannel {
+		trackingImage = previousImage
 	}
 
 	if previousImage == pinnedTarget || previousImage == target {
@@ -858,14 +875,32 @@ func (s *Server) RunVersionRollback(ctx context.Context, container map[string]in
 		}
 	}
 
+	trackingImageRestored := false
+	var trackingImageRestoreError interface{}
+	if trackingImage != "" && trackingImage != pinnedTarget {
+		refreshedContainer, found, refreshErr := s.resolveBulkTarget(ctx, container)
+		if refreshErr != nil {
+			trackingImageRestoreError = refreshErr.Error()
+		} else if !found {
+			trackingImageRestoreError = "Container not found after rollback; tracking channel restore skipped."
+		} else {
+			log.Printf("[Rollback] Restoring tracking image for container %s to %s...", cID, trackingImage)
+			if _, setErr := s.RouterOsClient.SetContainerRemoteImage(ctx, refreshedContainer, trackingImage); setErr != nil {
+				trackingImageRestoreError = setErr.Error()
+			} else {
+				trackingImageRestored = true
+			}
+		}
+	}
+
 	return map[string]interface{}{
 		"mode":                     "version-rollback",
 		"rollbackImage":            target,
 		"rollbackPinnedImage":      pinnedTarget,
 		"previousImage":            previousImage,
-		"trackingImage":            target,
-		"trackingImageRestored":    false,
-		"trackingImageRestoreError": nil,
+		"trackingImage":            trackingImage,
+		"trackingImageRestored":    trackingImageRestored,
+		"trackingImageRestoreError": trackingImageRestoreError,
 		"updateResult": map[string]string{
 			"mode":    "force-repull",
 			"message": "Rollback applied via remove+add to force RouterOS image pull.",
