@@ -32,6 +32,7 @@ type RollbackEntry struct {
 	ContainerID            string            `json:"containerId"`
 	ContainerName          string            `json:"containerName"`
 	RemoteImage            string            `json:"remoteImage"`
+	TrackingImage          string            `json:"trackingImage,omitempty"`
 	RollbackType           string            `json:"rollbackType,omitempty"`
 	RollbackManifestDigest string            `json:"rollbackManifestDigest,omitempty"`
 	PinnedImage            string            `json:"pinnedImage,omitempty"`
@@ -320,4 +321,51 @@ func (m *SettingsManager) SaveRollbackPoint(container map[string]interface{}, re
 	activeForRollback := effective != nil && effective.PinnedImage == snapshot.PinnedImage
 
 	return snapshot, activeForRollback, nil
+}
+
+func (m *SettingsManager) GetTrackingImage(containerName string) string {
+	name := strings.TrimSpace(containerName)
+	if name == "" {
+		return ""
+	}
+
+	state := m.ReadRollbackState()
+	entry, ok := state[name]
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(entry.TrackingImage)
+}
+
+func (m *SettingsManager) SetTrackingImage(containerName string, trackingImage string) error {
+	name := strings.TrimSpace(containerName)
+	if name == "" {
+		return nil
+	}
+
+	state := m.ReadRollbackState()
+	entry := state[name]
+	entry.ContainerName = name
+	entry.TrackingImage = strings.TrimSpace(trackingImage)
+	state[name] = entry
+	return m.WriteRollbackState(state)
+}
+
+func (m *SettingsManager) ClearTrackingImage(containerName string) error {
+	name := strings.TrimSpace(containerName)
+	if name == "" {
+		return nil
+	}
+
+	state := m.ReadRollbackState()
+	entry, ok := state[name]
+	if !ok {
+		return nil
+	}
+	if strings.TrimSpace(entry.TrackingImage) == "" {
+		return nil
+	}
+	entry.TrackingImage = ""
+	state[name] = entry
+	return m.WriteRollbackState(state)
 }

@@ -135,7 +135,8 @@ func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 
 	normalized := make([]map[string]interface{}, 0, len(containers))
 	for _, c := range containers {
-		normalized = append(normalized, NormalizeContainer(c, s.SelfContainer, s.SelfImageHint))
+		norm := NormalizeContainer(c, s.SelfContainer, s.SelfImageHint)
+		normalized = append(normalized, s.applyTrackingImageForDisplay(norm))
 	}
 
 	// Sortează containerele după nume alphabetically
@@ -429,6 +430,45 @@ func (s *Server) handleBulkAction(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) applyTrackingImageForDisplay(container map[string]interface{}) map[string]interface{} {
+	raw, _ := container["raw"].(map[string]interface{})
+	actualRemoteImage, _ := raw["remote-image"].(string)
+	actualRemoteImage = strings.TrimSpace(actualRemoteImage)
+	if actualRemoteImage == "" || !strings.Contains(actualRemoteImage, "@sha256:") {
+		return container
+	}
+
+	containerName, _ := container["name"].(string)
+	trackingImage := strings.TrimSpace(s.SettingsManager.GetTrackingImage(containerName))
+	if trackingImage == "" {
+		return container
+	}
+
+	container["image"] = trackingImage
+	container["trackingImage"] = trackingImage
+	return container
+}
+
+func (s *Server) effectiveRemoteImageRef(container map[string]interface{}) string {
+	raw, _ := container["raw"].(map[string]interface{})
+	actualRemoteImage, _ := raw["remote-image"].(string)
+	actualRemoteImage = strings.TrimSpace(actualRemoteImage)
+	if actualRemoteImage == "" {
+		actualRemoteImage, _ = container["image"].(string)
+		actualRemoteImage = strings.TrimSpace(actualRemoteImage)
+	}
+
+	if actualRemoteImage != "" && strings.Contains(actualRemoteImage, "@sha256:") {
+		containerName, _ := container["name"].(string)
+		trackingImage := strings.TrimSpace(s.SettingsManager.GetTrackingImage(containerName))
+		if trackingImage != "" {
+			return trackingImage
+		}
+	}
+
+	return actualRemoteImage
+}
+
 func (s *Server) resolveBulkTarget(ctx context.Context, target map[string]interface{}) (map[string]interface{}, bool, error) {
 	containers, err := s.RouterOsClient.ListContainers(ctx)
 	if err != nil {
@@ -640,7 +680,7 @@ func (s *Server) CheckContainerImage(ctx context.Context, container map[string]i
 	}
 	localImageID, _ := raw["image-id"].(string)
 	normalizedLocalImageID := registry.NormalizeDigest(localImageID)
-	remoteImageRef, _ := raw["remote-image"].(string)
+	remoteImageRef := s.effectiveRemoteImageRef(container)
 	if remoteImageRef == "" {
 		remoteImageRef, _ = container["image"].(string)
 	}
@@ -755,6 +795,7 @@ func (s *Server) RunVersionRollback(ctx context.Context, container map[string]in
 		previousImage = container["image"].(string)
 	}
 	previousImage = strings.TrimSpace(previousImage)
+	containerName, _ := container["name"].(string)
 	arch, _ := raw["arch"].(string)
 
 	previousRef := ""
@@ -773,7 +814,7 @@ func (s *Server) RunVersionRollback(ctx context.Context, container map[string]in
 		pinnedTarget = rollbackRef.PinnedImage
 	}
 
-	trackingImage := target
+	trackingImage := ""
 	previousTrackedChannel := previousRef == "latest" || previousRef == "stable"
 	targetTracksChannel := targetRef == "latest" || targetRef == "stable"
 	if previousTrackedChannel && !targetTracksChannel {
@@ -875,21 +916,17 @@ func (s *Server) RunVersionRollback(ctx context.Context, container map[string]in
 		}
 	}
 
-	trackingImageRestored := false
-	var trackingImageRestoreError interface{}
-	if trackingImage != "" && trackingImage != pinnedTarget {
-		refreshedContainer, found, refreshErr := s.resolveBulkTarget(ctx, container)
-		if refreshErr != nil {
-			trackingImageRestoreError = refreshErr.Error()
-		} else if !found {
-			trackingImageRestoreError = "Container not found after rollback; tracking channel restore skipped."
+	trackingImageSaved := false
+	var trackingImageSaveError interface{}
+	if trackingImage != "" {
+		if err := s.SettingsManager.SetTrackingImage(containerName, trackingImage); err != nil {
+			trackingImageSaveError = err.Error()
 		} else {
-			log.Printf("[Rollback] Restoring tracking image for container %s to %s...", cID, trackingImage)
-			if _, setErr := s.RouterOsClient.SetContainerRemoteImage(ctx, refreshedContainer, trackingImage); setErr != nil {
-				trackingImageRestoreError = setErr.Error()
-			} else {
-				trackingImageRestored = true
-			}
+			trackingImageSaved = true
+		}
+	} else {
+		if err := s.SettingsManager.ClearTrackingImage(containerName); err != nil {
+			trackingImageSaveError = err.Error()
 		}
 	}
 
@@ -899,8 +936,8 @@ func (s *Server) RunVersionRollback(ctx context.Context, container map[string]in
 		"rollbackPinnedImage":      pinnedTarget,
 		"previousImage":            previousImage,
 		"trackingImage":            trackingImage,
-		"trackingImageRestored":    trackingImageRestored,
-		"trackingImageRestoreError": trackingImageRestoreError,
+		"trackingImageRestored":    trackingImageSaved,
+		"trackingImageRestoreError": trackingImageSaveError,
 		"updateResult": map[string]string{
 			"mode":    "force-repull",
 			"message": "Rollback applied via remove+add to force RouterOS image pull.",
@@ -915,14 +952,13 @@ func (s *Server) RunVersionUpdate(ctx context.Context, container map[string]inte
 		raw = make(map[string]interface{})
 	}
 	currentImageRef := ""
-	if currentRaw, ok := raw["remote-image"].(string); ok {
-		currentImageRef = strings.TrimSpace(currentRaw)
-	}
+	currentImageRef = s.effectiveRemoteImageRef(container)
 	if currentImageRef == "" {
 		if containerImage, ok := container["image"].(string); ok {
 			currentImageRef = strings.TrimSpace(containerImage)
 		}
 	}
+	containerName, _ := container["name"].(string)
 	localImageID, _ := raw["image-id"].(string)
 	normalizedLocalImageID := registry.NormalizeDigest(localImageID)
 	arch, _ := raw["arch"].(string)
@@ -1069,6 +1105,10 @@ func (s *Server) RunVersionUpdate(ctx context.Context, container map[string]inte
 			Status:  http.StatusInternalServerError,
 			Details: map[string]interface{}{"container": cID, "image": desiredImageRef},
 		}
+	}
+
+	if err := s.SettingsManager.ClearTrackingImage(containerName); err != nil {
+		log.Printf("[Update] Failed to clear tracking image for %s: %v", containerName, err)
 	}
 
 	res := map[string]interface{}{

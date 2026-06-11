@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.9 - 2026-06-11
+
+- **Rollback keeps virtual channel tracking without re-upgrading.**
+  When a container is rolled back to a fixed version such as `v0.5.5`, MCUG now preserves the original `latest`/`stable` tracking state internally instead of writing it back to RouterOS immediately.
+- **Pinned rollback images display clean tracking labels.**
+  Containers rolled back to a fixed digest can still show and check against their tracked channel in the UI, while RouterOS keeps the actually installed rollback image unchanged.
+
 ## v0.5.8 - 2026-06-11
 
 - **Automatic page refresh after update/rollback.**
